@@ -25,6 +25,30 @@ export interface ApiSettings {
   uiApiKey: string;
 }
 
+export interface ApiClient {
+  testConnection(): Promise<void>;
+  getStats(): Promise<Stats>;
+  listRequests(params?: {
+    cursor?: string;
+    limit?: number;
+    model?: string;
+    client_hash?: string;
+    since?: string;
+    until?: string;
+  }): Promise<RequestsPage>;
+  getRequest(id: string): Promise<RequestDetail>;
+  searchRequests(q: string, limit?: number): Promise<{ items: RequestSummary[] }>;
+  getConversations(params?: {
+    group_by?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<ConversationsPage>;
+  getConversationMessages(groupKey: string, groupBy?: string): Promise<{ items: RequestDetail[] }>;
+  downloadExport(id: string, format?: 'json' | 'markdown'): Promise<void>;
+  exportUrl(id: string, format?: 'json' | 'markdown'): string;
+  getAuthHeader(): string;
+}
+
 export function loadSettings(): ApiSettings | null {
   const raw = localStorage.getItem(STORAGE_KEY);
   if (!raw) return null;
@@ -69,7 +93,31 @@ async function fetchApi<T>(
   return resp.json() as Promise<T>;
 }
 
-export function createApiClient(settings: ApiSettings) {
+async function downloadExportFile(
+  baseUrl: string,
+  apiKey: string,
+  id: string,
+  format: 'json' | 'markdown',
+): Promise<void> {
+  const url = `${baseUrl.replace(/\/$/, '')}/ui/v1/export/requests/${id}?format=${format}`;
+  const resp = await fetch(url, { headers: getHeaders(apiKey) });
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new ApiError(resp.status, resp.statusText, text);
+  }
+
+  const blob = await resp.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = objectUrl;
+  link.download = `request-${id}.${format === 'markdown' ? 'md' : 'json'}`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(objectUrl);
+}
+
+export function createApiClient(settings: ApiSettings): ApiClient {
   const { baseUrl, uiApiKey } = settings;
   const api = <T>(path: string) =>
     fetchApi<T>(baseUrl, uiApiKey, path);
@@ -136,6 +184,10 @@ export function createApiClient(settings: ApiSettings) {
       );
     },
 
+    async downloadExport(id: string, format: 'json' | 'markdown' = 'json'): Promise<void> {
+      await downloadExportFile(baseUrl, uiApiKey, id, format);
+    },
+
     exportUrl(id: string, format: 'json' | 'markdown' = 'json'): string {
       return `${baseUrl.replace(/\/$/, '')}/ui/v1/export/requests/${id}?format=${format}`;
     },
@@ -145,5 +197,3 @@ export function createApiClient(settings: ApiSettings) {
     },
   };
 }
-
-export type ApiClient = ReturnType<typeof createApiClient>;

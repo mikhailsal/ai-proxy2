@@ -11,13 +11,24 @@ interface RequestDetailProps {
 
 export function RequestDetail({ request, onClose }: RequestDetailProps) {
   const api = useApi();
+  const [exportingFormat, setExportingFormat] = useState<'json' | 'markdown' | null>(null);
+  const [exportError, setExportError] = useState('');
   const { data, isLoading } = useQuery({
     queryKey: ['request', request.id],
     queryFn: () => api.getRequest(request.id),
   });
 
-  const exportJsonUrl = api.exportUrl(request.id, 'json');
-  const exportMdUrl = api.exportUrl(request.id, 'markdown');
+  async function handleExport(format: 'json' | 'markdown') {
+    setExportError('');
+    setExportingFormat(format);
+    try {
+      await api.downloadExport(request.id, format);
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setExportingFormat(null);
+    }
+  }
 
   return (
     <div style={styles.container}>
@@ -33,8 +44,20 @@ export function RequestDetail({ request, onClose }: RequestDetailProps) {
           )}
         </div>
         <div style={styles.headerRight}>
-          <a href={exportJsonUrl} target="_blank" rel="noreferrer" style={styles.exportLink}>JSON</a>
-          <a href={exportMdUrl} target="_blank" rel="noreferrer" style={styles.exportLink}>MD</a>
+          <button
+            onClick={() => handleExport('json')}
+            style={styles.exportButton}
+            disabled={exportingFormat !== null}
+          >
+            {exportingFormat === 'json' ? 'Exporting…' : 'JSON'}
+          </button>
+          <button
+            onClick={() => handleExport('markdown')}
+            style={styles.exportButton}
+            disabled={exportingFormat !== null}
+          >
+            {exportingFormat === 'markdown' ? 'Exporting…' : 'MD'}
+          </button>
           <button onClick={onClose} style={styles.closeBtn}>✕</button>
         </div>
       </div>
@@ -48,6 +71,7 @@ export function RequestDetail({ request, onClose }: RequestDetailProps) {
         {request.cache_status && <MetaBadge label="Cache" value={request.cache_status} />}
         <MetaBadge label="Time" value={new Date(request.timestamp).toLocaleString()} />
       </div>
+      {exportError && <div style={styles.exportError}>{exportError}</div>}
 
       {isLoading ? (
         <div style={styles.loading}>Loading detail…</div>
@@ -135,10 +159,11 @@ const styles: Record<string, React.CSSProperties> = {
   model: { fontSize: '0.85rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   meta: { fontSize: '0.8rem', color: '#8b949e', whiteSpace: 'nowrap' },
   metaRow: { display: 'flex', gap: 16, padding: '6px 12px', borderBottom: '1px solid #21262d', flexWrap: 'wrap', flexShrink: 0 },
+  exportError: { padding: '8px 12px', color: '#f85149', borderBottom: '1px solid #21262d', fontSize: '0.8rem' },
   sections: { flex: 1, overflow: 'auto' },
   pre: { margin: 0, fontFamily: 'monospace', fontSize: '0.8rem', lineHeight: 1.5, overflowX: 'auto' },
   loading: { padding: '2rem', textAlign: 'center', color: '#8b949e' },
-  exportLink: { color: '#58a6ff', fontSize: '0.8rem', textDecoration: 'none' },
+  exportButton: { background: 'none', border: 'none', color: '#58a6ff', fontSize: '0.8rem', cursor: 'pointer', padding: 0 },
   closeBtn: { background: 'none', border: 'none', color: '#8b949e', cursor: 'pointer', fontSize: '1rem', padding: '0 4px' },
 };
 

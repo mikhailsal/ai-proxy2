@@ -54,7 +54,7 @@ Model names support `fnmatch` glob patterns. The first matching rule wins.
 
 ### 3. Run migrations
 
-Once PostgreSQL is running, apply the Alembic schema before starting the backend:
+Compose now runs Alembic automatically before the backend starts. If you want to run it manually:
 
 ```bash
 make migrate
@@ -64,7 +64,7 @@ Use `make migrate-rollback` to verify the last revision can be reversed locally.
 
 ### 4. Run
 
-**Development** (backend on :8000, hot reload, frontend served separately):
+**Development** (backend on :8000, Dockerized frontend on :3000, optional Vite frontend for local UI edits):
 
 ```bash
 POSTGRES_PASSWORD=your-secure-password docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
@@ -72,7 +72,8 @@ cd frontend && npm install && npm run dev
 ```
 
 - API: http://localhost:8000
-- UI: http://localhost:5173
+- Docker UI: http://localhost:3000
+- Vite UI: http://localhost:5173
 
 **Production** (requires a domain with DNS pointed at the server):
 
@@ -82,7 +83,7 @@ DOMAIN=your.domain.com ACME_EMAIL=you@example.com docker compose up -d
 
 - API: `https://your.domain.com`
 - UI: `https://logs.your.domain.com`
-- Traefik dashboard: `http://127.0.0.1:8080`
+- Traefik dashboard: `http://127.0.0.1:18080` by default, or `TRAEFIK_DASHBOARD_PORT` if overridden
 
 ## Connecting clients
 

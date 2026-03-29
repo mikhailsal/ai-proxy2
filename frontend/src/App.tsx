@@ -130,7 +130,9 @@ const styles: Record<string, React.CSSProperties> = {
     height: '100%',
     cursor: 'pointer',
     fontSize: '0.875rem',
-    borderBottom: '2px solid transparent',
+    borderBottomWidth: 2,
+    borderBottomStyle: 'solid',
+    borderBottomColor: 'transparent',
   },
   navTabActive: { color: '#e6edf3', borderBottomColor: '#f78166' },
   disconnectBtn: {

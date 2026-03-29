@@ -44,10 +44,10 @@ frontend-build: ## Build frontend for production
 
 # ── Database ──────────────────────────────────────────────────────────
 migrate: ## Apply database migrations
-	cd $(BACKEND_DIR) && python -m alembic upgrade head
+	docker compose run --rm backend python -m alembic upgrade head
 
 migrate-rollback: ## Rollback last migration
-	cd $(BACKEND_DIR) && python -m alembic downgrade -1
+	docker compose run --rm backend python -m alembic downgrade -1
 
 migrate-create: ## Create a new migration (usage: make migrate-create msg="description")
 	cd $(BACKEND_DIR) && python -m alembic revision --autogenerate -m "$(msg)"
