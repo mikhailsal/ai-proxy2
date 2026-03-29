@@ -1,0 +1,32 @@
+# ── AI Proxy v2 Configuration ──────────────────────────────────────────
+# Copy this file to config.yml and customize.
+
+# Provider definitions
+providers:
+  openrouter:
+    type: openai_compatible
+    endpoint: https://openrouter.ai/api/v1
+    # API key is read from OPENROUTER_API_KEY env var
+    headers:
+      HTTP-Referer: "https://ai-proxy.example.com"
+      X-Title: "AI Proxy v2"
+
+# Model mappings: client-facing model name -> provider:actual_model
+model_mappings:
+  "*": "openrouter:openai/gpt-4o-mini"
+
+# Access rules (optional)
+access_rules: {}
+
+# Request modification rules (optional)
+modification_rules: []
+
+# Logging settings
+logging:
+  log_retention_days: 30
+  batch_size: 50
+  flush_interval_seconds: 5
+
+# Grouping rules for conversation detection
+grouping:
+  default_field: "system_prompt"

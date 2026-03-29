@@ -1,0 +1,32 @@
+# Development overrides — hot reload, exposed ports, no Traefik
+services:
+  traefik:
+    profiles:
+      - production
+
+  postgres:
+    ports:
+      - "127.0.0.1:5433:5432"
+
+  backend:
+    build:
+      context: ./backend
+      target: deps
+    command: ["uvicorn", "ai_proxy.app:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ./backend/ai_proxy:/app/ai_proxy
+      - ./backend/tests:/app/tests
+      - ./backend/pyproject.toml:/app/pyproject.toml
+      - ./config.yml:/app/config.yml:ro
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-ai_proxy}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ai_proxy}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - API_KEYS=${API_KEYS:-}
+      - UI_API_KEY=${UI_API_KEY:-}
+    labels: []
+
+  frontend:
+    profiles:
+      - production

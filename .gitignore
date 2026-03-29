@@ -1,0 +1,27 @@
+# Credentials (never commit)
+.env
+tmp-credentials-for-testing.md
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node
+node_modules/
+frontend/dist/
+
+# IDE
+.idea/
+.vscode/
+
+# Docker certs
+certs/
+
+# Logs
+*.log
