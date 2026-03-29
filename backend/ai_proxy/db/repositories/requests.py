@@ -2,14 +2,27 @@
 
 import uuid
 from datetime import datetime
+from typing import TYPE_CHECKING, Any, cast
 
-from sqlalchemy import Text, cast, desc, func, select
+from sqlalchemy import and_, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ai_proxy.db.models import ProxyRequest
+from ai_proxy.db.models import Provider, ProxyRequest
+
+if TYPE_CHECKING:
+    from sqlalchemy.engine import CursorResult
 
 
-async def create_request(session: AsyncSession, **kwargs) -> ProxyRequest:  # noqa: ANN003
+def encode_cursor(timestamp: datetime, request_id: uuid.UUID) -> str:
+    return f"{timestamp.isoformat()}|{request_id}"
+
+
+def decode_cursor(cursor: str) -> tuple[datetime, uuid.UUID]:
+    raw_timestamp, raw_request_id = cursor.split("|", 1)
+    return datetime.fromisoformat(raw_timestamp), uuid.UUID(raw_request_id)
+
+
+async def create_request(session: AsyncSession, **kwargs: Any) -> ProxyRequest:
     req = ProxyRequest(**kwargs)
     session.add(req)
     await session.commit()
@@ -25,7 +38,7 @@ async def get_request(session: AsyncSession, request_id: uuid.UUID) -> ProxyRequ
 async def list_requests(
     session: AsyncSession,
     *,
-    cursor: datetime | None = None,
+    cursor: tuple[datetime, uuid.UUID] | None = None,
     limit: int = 50,
     model: str | None = None,
     client_hash: str | None = None,
@@ -34,16 +47,24 @@ async def list_requests(
     since: datetime | None = None,
     until: datetime | None = None,
 ) -> list[ProxyRequest]:
-    query = select(ProxyRequest).order_by(desc(ProxyRequest.timestamp))
+    query = select(ProxyRequest).order_by(desc(ProxyRequest.timestamp), desc(ProxyRequest.id))
 
     if cursor:
-        query = query.where(ProxyRequest.timestamp < cursor)
+        cursor_timestamp, cursor_id = cursor
+        query = query.where(
+            or_(
+                ProxyRequest.timestamp < cursor_timestamp,
+                and_(ProxyRequest.timestamp == cursor_timestamp, ProxyRequest.id < cursor_id),
+            )
+        )
     if model:
         query = query.where(ProxyRequest.model_requested == model)
     if client_hash:
         query = query.where(ProxyRequest.client_api_key_hash == client_hash)
     if status_code:
         query = query.where(ProxyRequest.response_status_code == status_code)
+    if provider_name:
+        query = query.join(Provider, ProxyRequest.provider_id == Provider.id).where(Provider.name == provider_name)
     if since:
         query = query.where(ProxyRequest.timestamp >= since)
     if until:
@@ -59,14 +80,12 @@ async def search_requests(
     query_text: str,
     limit: int = 50,
 ) -> list[ProxyRequest]:
-    # Simple JSONB text search using cast to TEXT + ILIKE
+    search_query = func.plainto_tsquery("english", query_text)
+    rank = func.ts_rank_cd(ProxyRequest.search_vector, search_query)
     query = (
         select(ProxyRequest)
-        .where(
-            cast(ProxyRequest.request_body, Text).ilike(f"%{query_text}%")
-            | cast(ProxyRequest.response_body, Text).ilike(f"%{query_text}%")
-        )
-        .order_by(desc(ProxyRequest.timestamp))
+        .where(ProxyRequest.search_vector.op("@@")(search_query))
+        .order_by(desc(rank), desc(ProxyRequest.timestamp), desc(ProxyRequest.id))
         .limit(limit)
     )
     result = await session.execute(query)
@@ -78,7 +97,7 @@ async def get_request_count(session: AsyncSession) -> int:
     return result.scalar_one()
 
 
-async def get_stats(session: AsyncSession) -> dict:
+async def get_stats(session: AsyncSession) -> dict[str, float | int]:
     result = await session.execute(
         select(
             func.count(ProxyRequest.id).label("total_requests"),
@@ -98,8 +117,10 @@ async def get_stats(session: AsyncSession) -> dict:
 
 async def delete_old_requests(session: AsyncSession, before: datetime) -> int:
     from sqlalchemy import delete as sql_delete
-    result = await session.execute(
-        sql_delete(ProxyRequest).where(ProxyRequest.timestamp < before)
+
+    result = cast(
+        "CursorResult[Any]",
+        await session.execute(sql_delete(ProxyRequest).where(ProxyRequest.timestamp < before)),
     )
     await session.commit()
-    return result.rowcount  # type: ignore[return-value]
+    return int(result.rowcount or 0)

@@ -1,19 +1,23 @@
 """Async logging service — background task that writes to PostgreSQL."""
 
 import asyncio
+from contextlib import suppress
+from typing import Any
 
 import structlog
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from ai_proxy.config.loader import get_app_config
 from ai_proxy.db.engine import get_engine
-from ai_proxy.db.models import ProxyRequest
+from ai_proxy.db.models import Provider, ProxyRequest
 from ai_proxy.logging.masking import mask_headers, mask_sensitive_fields
 from ai_proxy.logging.models import LogEntry
 
 logger = structlog.get_logger()
 
 _queue: asyncio.Queue[LogEntry] = asyncio.Queue(maxsize=10000)
-_flush_task: asyncio.Task | None = None
+_flush_task: asyncio.Task[None] | None = None
 
 
 async def enqueue_log(entry: LogEntry) -> None:
@@ -24,8 +28,6 @@ async def enqueue_log(entry: LogEntry) -> None:
 
 
 async def _flush_loop(batch_size: int = 50, flush_interval: float = 5.0) -> None:
-    from sqlalchemy.ext.asyncio import async_sessionmaker
-
     engine = get_engine()
     if engine is None:
         logger.error("logging_service_no_engine")
@@ -70,10 +72,12 @@ async def _flush_loop(batch_size: int = 50, flush_interval: float = 5.0) -> None
             logger.exception("flush_loop_error", batch_size=len(entries))
 
 
-async def _write_batch(session_factory, entries: list[LogEntry]) -> None:  # noqa: ANN001
+async def _write_batch(
+    session_factory: async_sessionmaker[AsyncSession], entries: list[LogEntry]
+) -> None:
     async with session_factory() as session:
-        session: AsyncSession
         for entry in entries:
+            provider_id = await _resolve_provider_id(session, entry.provider_name)
             db_request = ProxyRequest(
                 id=entry.id,
                 timestamp=entry.timestamp,
@@ -89,6 +93,7 @@ async def _write_batch(session_factory, entries: list[LogEntry]) -> None:  # noq
                 stream_chunks=entry.stream_chunks,
                 model_requested=entry.model_requested,
                 model_resolved=entry.model_resolved,
+                provider_id=provider_id,
                 latency_ms=entry.latency_ms,
                 input_tokens=entry.input_tokens,
                 output_tokens=entry.output_tokens,
@@ -104,18 +109,47 @@ async def _write_batch(session_factory, entries: list[LogEntry]) -> None:  # noq
         logger.debug("batch_written", count=len(entries))
 
 
-def start_logging_service(batch_size: int = 50, flush_interval: float = 5.0) -> asyncio.Task:
-    global _flush_task  # noqa: PLW0603
+async def _resolve_provider_id(session: AsyncSession, provider_name: str | None) -> int | None:
+    if provider_name is None:
+        return None
+
+    existing = await session.execute(select(Provider).where(Provider.name == provider_name))
+    provider = existing.scalar_one_or_none()
+    if provider is not None:
+        return provider.id
+
+    provider_config = get_app_config().providers.get(provider_name)
+    if provider_config is None:
+        return None
+
+    settings_json: dict[str, Any] = {
+        "headers": provider_config.headers,
+        "timeout": provider_config.timeout,
+    }
+    if provider_config.fallback_for:
+        settings_json["fallback_for"] = provider_config.fallback_for
+
+    provider = Provider(
+        name=provider_name,
+        endpoint_url=provider_config.endpoint,
+        provider_type=provider_config.type,
+        settings_json=settings_json,
+    )
+    session.add(provider)
+    await session.flush()
+    return provider.id
+
+
+def start_logging_service(batch_size: int = 50, flush_interval: float = 5.0) -> asyncio.Task[None]:
+    global _flush_task
     _flush_task = asyncio.create_task(_flush_loop(batch_size, flush_interval))
     return _flush_task
 
 
 async def stop_logging_service() -> None:
-    global _flush_task  # noqa: PLW0603
+    global _flush_task
     if _flush_task:
         _flush_task.cancel()
-        try:
+        with suppress(asyncio.CancelledError):
             await _flush_task
-        except asyncio.CancelledError:
-            pass
         _flush_task = None

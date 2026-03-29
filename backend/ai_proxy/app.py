@@ -4,10 +4,11 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 import structlog
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from ai_proxy.adapters.registry import build_registry
+from ai_proxy.api.deps import require_ui_auth
 from ai_proxy.api.proxy.router import router as proxy_router
 from ai_proxy.api.ui.chats import router as chats_router
 from ai_proxy.api.ui.export import router as export_router
@@ -25,18 +26,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan: startup and shutdown hooks."""
     settings = get_settings()
 
-    # Init database
+    # Initialize the engine without opening a live connection.
     init_engine(settings.database_url)
     logger.info("database_initialized")
-
-    # Create tables if needed
-    from ai_proxy.db.engine import get_engine
-    from ai_proxy.db.models import Base
-    engine = get_engine()
-    if engine:
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        logger.info("database_tables_created")
 
     # Load config
     config = load_config(settings.config_path)
@@ -84,6 +76,10 @@ def create_app() -> FastAPI:
     # Health endpoint
     @application.get("/health")
     async def health() -> dict[str, str]:
+        return {"status": "ok"}
+
+    @application.get("/ui/v1/health", dependencies=[Depends(require_ui_auth)])
+    async def ui_health() -> dict[str, str]:
         return {"status": "ok"}
 
     # Admin endpoint

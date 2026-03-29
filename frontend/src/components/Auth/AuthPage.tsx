@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { createApiClient, saveSettings } from '../../api/client';
+import { ApiError, createApiClient, saveSettings } from '../../api/client';
 import type { ApiClient } from '../../api/client';
 
 interface AuthPageProps {
@@ -15,22 +15,24 @@ export function AuthPage({ onConnect }: AuthPageProps) {
   async function handleConnect(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    setError('');
-    try {
-      const settings = { baseUrl: baseUrl.trim(), uiApiKey: uiApiKey.trim() };
-      const client = createApiClient(settings);
-      const ok = await client.testConnection();
-      if (!ok) {
-        setError('Could not connect to backend. Check URL and API key.');
-      } else {
+      setError('');
+      try {
+        const settings = { baseUrl: baseUrl.trim(), uiApiKey: uiApiKey.trim() };
+        const client = createApiClient(settings);
+        await client.testConnection();
         saveSettings(settings);
         onConnect(client);
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 401) {
+          setError('Invalid UI API key.');
+        } else if (err instanceof Error) {
+          setError(`Could not connect to backend. ${err.message}`);
+        } else {
+          setError(String(err));
+        }
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      setError(String(err));
-    } finally {
-      setLoading(false);
-    }
   }
 
   return (

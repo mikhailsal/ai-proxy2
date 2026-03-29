@@ -2,18 +2,21 @@
 
 import uuid
 from datetime import datetime
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ai_proxy.api.deps import get_session, require_ui_auth
+from ai_proxy.db.models import ProxyRequest
 from ai_proxy.db.repositories import requests as req_repo
 
 router = APIRouter(dependencies=[Depends(require_ui_auth)])
+SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
 
-def _serialize_request(req) -> dict:  # noqa: ANN001
+def _serialize_request(req: ProxyRequest) -> dict[str, Any]:
     return {
         "id": str(req.id),
         "timestamp": req.timestamp.isoformat() if req.timestamp else None,
@@ -34,7 +37,7 @@ def _serialize_request(req) -> dict:  # noqa: ANN001
     }
 
 
-def _serialize_request_full(req) -> dict:  # noqa: ANN001
+def _serialize_request_full(req: ProxyRequest) -> dict[str, Any]:
     data = _serialize_request(req)
     data.update({
         "request_headers": req.request_headers,
@@ -50,7 +53,7 @@ def _serialize_request_full(req) -> dict:  # noqa: ANN001
 
 @router.get("/ui/v1/requests")
 async def list_requests(
-    session: AsyncSession = Depends(get_session),
+    session: SessionDep,
     cursor: str | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
     model: str | None = Query(None),
@@ -58,14 +61,18 @@ async def list_requests(
     status_code: int | None = Query(None),
     since: str | None = Query(None),
     until: str | None = Query(None),
-):  # noqa: ANN201
-    cursor_dt = datetime.fromisoformat(cursor) if cursor else None
+) -> JSONResponse:
+    try:
+        cursor_value = req_repo.decode_cursor(cursor) if cursor else None
+    except ValueError:
+        return JSONResponse({"error": "Invalid cursor"}, status_code=400)
+
     since_dt = datetime.fromisoformat(since) if since else None
     until_dt = datetime.fromisoformat(until) if until else None
 
     reqs = await req_repo.list_requests(
         session,
-        cursor=cursor_dt,
+        cursor=cursor_value,
         limit=limit,
         model=model,
         client_hash=client_hash,
@@ -75,7 +82,11 @@ async def list_requests(
     )
 
     items = [_serialize_request(r) for r in reqs]
-    next_cursor = items[-1]["timestamp"] if items else None
+    next_cursor = (
+        req_repo.encode_cursor(reqs[-1].timestamp, reqs[-1].id)
+        if reqs and reqs[-1].timestamp
+        else None
+    )
 
     return JSONResponse({"items": items, "next_cursor": next_cursor})
 
@@ -83,8 +94,8 @@ async def list_requests(
 @router.get("/ui/v1/requests/{request_id}")
 async def get_request(
     request_id: str,
-    session: AsyncSession = Depends(get_session),
-):  # noqa: ANN201
+    session: SessionDep,
+) -> JSONResponse:
     req = await req_repo.get_request(session, uuid.UUID(request_id))
     if not req:
         return JSONResponse({"error": "Not found"}, status_code=404)
@@ -93,10 +104,10 @@ async def get_request(
 
 @router.get("/ui/v1/search")
 async def search(
+    session: SessionDep,
     q: str = Query(...),
     limit: int = Query(50, ge=1, le=200),
-    session: AsyncSession = Depends(get_session),
-):  # noqa: ANN201
+) -> JSONResponse:
     reqs = await req_repo.search_requests(session, q, limit)
     items = [_serialize_request(r) for r in reqs]
     return JSONResponse({"items": items})
@@ -104,7 +115,7 @@ async def search(
 
 @router.get("/ui/v1/stats")
 async def get_stats(
-    session: AsyncSession = Depends(get_session),
-):  # noqa: ANN201
+    session: SessionDep,
+) -> JSONResponse:
     stats = await req_repo.get_stats(session)
     return JSONResponse(stats)

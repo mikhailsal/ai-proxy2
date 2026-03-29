@@ -2,7 +2,7 @@
 
 from collections.abc import AsyncGenerator
 
-from fastapi import Depends, Header, HTTPException
+from fastapi import Header, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ai_proxy.db.engine import get_db_session

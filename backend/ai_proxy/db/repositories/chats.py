@@ -1,9 +1,14 @@
 """Chat repository — conversation grouping."""
 
+from typing import TYPE_CHECKING, Any, cast
+
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ai_proxy.db.models import ProxyRequest
+
+if TYPE_CHECKING:
+    from sqlalchemy.sql.elements import ColumnElement
 
 
 async def get_conversations(
@@ -12,8 +17,10 @@ async def get_conversations(
     group_by: str = "system_prompt",
     limit: int = 50,
     offset: int = 0,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Group requests into conversations based on system prompt or other fields."""
+    system_prompt_expr: ColumnElement[str | None]
+
     # Group by system prompt extracted from JSONB
     if group_by == "system_prompt":
         # Extract system prompt from request_body -> messages[0]
@@ -21,9 +28,9 @@ async def get_conversations(
             ProxyRequest.request_body, "messages", "0", "content"
         )
     elif group_by == "client":
-        system_prompt_expr = ProxyRequest.client_api_key_hash
+        system_prompt_expr = cast("ColumnElement[str | None]", ProxyRequest.client_api_key_hash)
     elif group_by == "model":
-        system_prompt_expr = ProxyRequest.model_requested
+        system_prompt_expr = cast("ColumnElement[str | None]", ProxyRequest.model_requested)
     else:
         system_prompt_expr = func.jsonb_extract_path_text(
             ProxyRequest.request_body, "messages", "0", "content"
@@ -46,7 +53,7 @@ async def get_conversations(
     result = await session.execute(query)
     rows = result.all()
 
-    conversations = []
+    conversations: list[dict[str, Any]] = []
     for row in rows:
         conversations.append({
             "group_key": row.group_key or "unknown",

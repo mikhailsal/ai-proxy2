@@ -3,14 +3,15 @@
 import fnmatch
 
 from ai_proxy.config.loader import get_app_config
+from ai_proxy.types import JsonObject
 
 
 def apply_modifications(
-    request_body: dict,
+    request_body: JsonObject,
     headers: dict[str, str],
     provider_name: str,
     model: str,
-) -> tuple[dict, dict[str, str]]:
+) -> tuple[JsonObject, dict[str, str]]:
     config = get_app_config()
 
     for rule in config.modification_rules:

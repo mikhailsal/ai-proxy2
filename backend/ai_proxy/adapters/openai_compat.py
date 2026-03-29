@@ -2,11 +2,13 @@
 
 import json
 from collections.abc import AsyncGenerator
+from typing import Any, cast
 
 import httpx
 import structlog
 
-from ai_proxy.adapters.base import BaseAdapter
+from ai_proxy.adapters.base import BaseAdapter, ProviderResponse, ProviderStreamResponse
+from ai_proxy.types import JsonObject
 
 logger = structlog.get_logger()
 
@@ -23,29 +25,66 @@ class OpenAICompatAdapter(BaseAdapter):
                 out[h] = headers[h]
         return out
 
-    async def chat_completions(self, request_body: dict, headers: dict[str, str]) -> dict:
+    async def chat_completions(
+        self, request_body: dict[str, Any], headers: dict[str, str]
+    ) -> ProviderResponse:
         url = f"{self.endpoint_url}/chat/completions"
         req_headers = self._build_headers(headers)
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             resp = await client.post(url, json=request_body, headers=req_headers)
-            resp.raise_for_status()
-            return resp.json()
+            return ProviderResponse(
+                status_code=resp.status_code,
+                headers=dict(resp.headers),
+                body=resp.content,
+                content_type=resp.headers.get("content-type"),
+            )
 
-    async def stream_chat_completions(self, request_body: dict, headers: dict[str, str]) -> AsyncGenerator[bytes, None]:
+    async def stream_chat_completions(
+        self, request_body: dict[str, Any], headers: dict[str, str]
+    ) -> ProviderStreamResponse:
         url = f"{self.endpoint_url}/chat/completions"
         req_headers = self._build_headers(headers)
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            async with client.stream("POST", url, json=request_body, headers=req_headers) as resp:
-                resp.raise_for_status()
+        client = httpx.AsyncClient(timeout=self.timeout)
+        response_context = client.stream("POST", url, json=request_body, headers=req_headers)
+
+        try:
+            resp = await response_context.__aenter__()
+        except Exception:
+            await client.aclose()
+            raise
+
+        if resp.is_error:
+            body = await resp.aread()
+            await response_context.__aexit__(None, None, None)
+            await client.aclose()
+            return ProviderStreamResponse(
+                status_code=resp.status_code,
+                headers=dict(resp.headers),
+                content_type=resp.headers.get("content-type"),
+                error_body=body,
+            )
+
+        async def body_iterator() -> AsyncGenerator[bytes, None]:
+            try:
                 async for line in resp.aiter_lines():
                     if line:
                         yield (line + "\n\n").encode()
                     if line.strip() == "data: [DONE]":
                         break
+            finally:
+                await response_context.__aexit__(None, None, None)
+                await client.aclose()
 
-    async def list_models(self) -> list[dict]:
+        return ProviderStreamResponse(
+            status_code=resp.status_code,
+            headers=dict(resp.headers),
+            content_type=resp.headers.get("content-type"),
+            body=body_iterator(),
+        )
+
+    async def list_models(self) -> list[JsonObject]:
         url = f"{self.endpoint_url}/models"
-        headers = {}
+        headers: dict[str, str] = {}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
         headers.update(self.extra_headers)
@@ -53,20 +92,20 @@ class OpenAICompatAdapter(BaseAdapter):
             async with httpx.AsyncClient(timeout=30) as client:
                 resp = await client.get(url, headers=headers)
                 resp.raise_for_status()
-                data = resp.json()
-                return data.get("data", [])
+                data = cast("JsonObject", resp.json())
+                return cast("list[JsonObject]", data.get("data", []))
         except Exception:
             logger.warning("list_models_failed", provider=self.provider_name)
             return []
 
 
-def parse_sse_chunk(chunk_bytes: bytes) -> dict | None:
+def parse_sse_chunk(chunk_bytes: bytes) -> JsonObject | None:
     text = chunk_bytes.decode("utf-8", errors="replace").strip()
     if not text or text == "data: [DONE]":
         return None
     if text.startswith("data: "):
         text = text[6:]
     try:
-        return json.loads(text)
+        return cast("JsonObject", json.loads(text))
     except json.JSONDecodeError:
         return None

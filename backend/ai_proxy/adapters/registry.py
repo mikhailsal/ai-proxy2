@@ -14,7 +14,7 @@ _registry: dict[str, BaseAdapter] = {}
 
 
 def build_registry(config: AppConfig) -> dict[str, BaseAdapter]:
-    global _registry  # noqa: PLW0603
+    global _registry
     _registry = {}
     for name, prov in config.providers.items():
         api_key = None

@@ -13,6 +13,7 @@ def test_create_app_has_health_route() -> None:
     app = create_app()
     route_paths = [route.path for route in app.routes]
     assert "/health" in route_paths
+    assert "/ui/v1/health" in route_paths
 
 
 @pytest.mark.asyncio

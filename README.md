@@ -4,7 +4,7 @@ An OpenAI-compatible API proxy with logging, model routing, and a web UI for rev
 
 ## Stack
 
-- **Backend**: Python 3.12 + FastAPI
+- **Backend**: Python 3.10 + FastAPI
 - **Database**: PostgreSQL 16
 - **Frontend**: React 18 + Vite + TypeScript
 - **Reverse proxy**: Traefik (production only)
@@ -52,12 +52,22 @@ model_mappings:
 
 Model names support `fnmatch` glob patterns. The first matching rule wins.
 
-### 3. Run
+### 3. Run migrations
+
+Once PostgreSQL is running, apply the Alembic schema before starting the backend:
+
+```bash
+make migrate
+```
+
+Use `make migrate-rollback` to verify the last revision can be reversed locally.
+
+### 4. Run
 
 **Development** (backend on :8000, hot reload, frontend served separately):
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+POSTGRES_PASSWORD=your-secure-password docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
 cd frontend && npm install && npm run dev
 ```
 
@@ -109,8 +119,14 @@ Streaming (`"stream": true`) is supported.
 |---|---|---|
 | `POST /v1/chat/completions` | `API_KEYS` | Proxy chat completions |
 | `GET /v1/models` | `API_KEYS` | List configured models |
-| `GET /api/ui/requests` | `UI_API_KEY` | Request log (UI) |
-| `GET /api/ui/chats` | `UI_API_KEY` | Grouped conversations (UI) |
+| `GET /ui/v1/health` | `UI_API_KEY` | Authenticated UI connectivity check |
+| `GET /ui/v1/requests` | `UI_API_KEY` | Request log browser |
+| `GET /ui/v1/requests/{request_id}` | `UI_API_KEY` | Request detail |
+| `GET /ui/v1/search` | `UI_API_KEY` | Full-text request search |
+| `GET /ui/v1/stats` | `UI_API_KEY` | UI summary metrics |
+| `GET /ui/v1/conversations` | `UI_API_KEY` | Grouped conversations |
+| `GET /ui/v1/conversations/{group_key}/messages` | `UI_API_KEY` | Conversation messages |
+| `GET /ui/v1/export/requests/{request_id}` | `UI_API_KEY` | Export a request as JSON or Markdown |
 
 ## Configuration reference
 

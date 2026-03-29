@@ -8,6 +8,18 @@ import type {
 
 const STORAGE_KEY = 'ai-proxy-connection';
 
+export class ApiError extends Error {
+  status: number;
+  responseText: string;
+
+  constructor(status: number, statusText: string, responseText: string) {
+    super(`${status} ${statusText}: ${responseText}`);
+    this.name = 'ApiError';
+    this.status = status;
+    this.responseText = responseText;
+  }
+}
+
 export interface ApiSettings {
   baseUrl: string;
   uiApiKey: string;
@@ -32,10 +44,15 @@ export function clearSettings(): void {
 }
 
 function getHeaders(apiKey: string): HeadersInit {
-  return {
+  const headers: HeadersInit = {
     'Content-Type': 'application/json',
-    Authorization: `Bearer ${apiKey}`,
   };
+
+  if (apiKey) {
+    headers.Authorization = `Bearer ${apiKey}`;
+  }
+
+  return headers;
 }
 
 async function fetchApi<T>(
@@ -47,7 +64,7 @@ async function fetchApi<T>(
   const resp = await fetch(url, { headers: getHeaders(apiKey) });
   if (!resp.ok) {
     const text = await resp.text();
-    throw new Error(`${resp.status} ${resp.statusText}: ${text}`);
+    throw new ApiError(resp.status, resp.statusText, text);
   }
   return resp.json() as Promise<T>;
 }
@@ -58,13 +75,8 @@ export function createApiClient(settings: ApiSettings) {
     fetchApi<T>(baseUrl, uiApiKey, path);
 
   return {
-    async testConnection(): Promise<boolean> {
-      try {
-        await fetchApi<unknown>(baseUrl, uiApiKey, '/health');
-        return true;
-      } catch {
-        return false;
-      }
+    async testConnection(): Promise<void> {
+      await fetchApi<unknown>(baseUrl, uiApiKey, '/ui/v1/health');
     },
 
     async getStats(): Promise<Stats> {
@@ -129,7 +141,7 @@ export function createApiClient(settings: ApiSettings) {
     },
 
     getAuthHeader(): string {
-      return `Bearer ${uiApiKey}`;
+      return uiApiKey ? `Bearer ${uiApiKey}` : '';
     },
   };
 }

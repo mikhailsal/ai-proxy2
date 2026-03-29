@@ -11,7 +11,7 @@ _app_config: AppConfig | None = None
 
 
 def load_config(config_path: str) -> AppConfig:
-    global _app_config  # noqa: PLW0603
+    global _app_config
     try:
         with open(config_path) as f:  # noqa: PTH123
             raw = yaml.safe_load(f) or {}
@@ -45,3 +45,8 @@ def get_app_config() -> AppConfig:
 def reload_config(config_path: str) -> AppConfig:
     logger.info("config_reloading", path=config_path)
     return load_config(config_path)
+
+
+def reset_config() -> None:
+    global _app_config
+    _app_config = None

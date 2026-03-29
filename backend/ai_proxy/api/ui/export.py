@@ -2,6 +2,7 @@
 
 import json
 import uuid
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse, Response
@@ -12,14 +13,15 @@ from ai_proxy.api.ui.requests import _serialize_request_full
 from ai_proxy.db.repositories import requests as req_repo
 
 router = APIRouter(dependencies=[Depends(require_ui_auth)])
+SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
 
 @router.get("/ui/v1/export/requests/{request_id}")
 async def export_request(
     request_id: str,
+    session: SessionDep,
     format: str = Query("json"),  # noqa: A002
-    session: AsyncSession = Depends(get_session),
-):  # noqa: ANN201
+) -> Response:
     req = await req_repo.get_request(session, uuid.UUID(request_id))
     if not req:
         return JSONResponse({"error": "Not found"}, status_code=404)
@@ -33,7 +35,7 @@ async def export_request(
     return JSONResponse(data)
 
 
-def _to_markdown(data: dict) -> str:
+def _to_markdown(data: dict[str, Any]) -> str:
     lines = [
         f"# Request {data['id']}",
         f"**Timestamp**: {data['timestamp']}",
