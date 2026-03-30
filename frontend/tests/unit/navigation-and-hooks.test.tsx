@@ -19,6 +19,7 @@ describe('navigation helpers', () => {
   it('parses navigation state from a location-like object', () => {
     const location = { hash: '#top', pathname: '/app', search: '?tab=chat&groupBy=model&group=alpha' } as Location;
     expect(parseChatGroupBy('client')).toBe('client');
+    expect(parseChatGroupBy('system_prompt_first_user')).toBe('system_prompt_first_user');
     expect(parseChatGroupBy('other')).toBe(DEFAULT_NAVIGATION.chatGroupBy);
     expect(readNavigationFromLocation(location)).toEqual({
       activeTab: 'chat',

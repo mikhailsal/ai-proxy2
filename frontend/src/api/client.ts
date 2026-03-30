@@ -1,4 +1,5 @@
 import type {
+  ConversationMessage,
   ConversationsPage,
   RequestDetail,
   RequestSummary,
@@ -43,7 +44,7 @@ export interface ApiClient {
     limit?: number;
     offset?: number;
   }): Promise<ConversationsPage>;
-  getConversationMessages(groupKey: string, groupBy?: string): Promise<{ items: RequestDetail[] }>;
+  getConversationMessages(groupKey: string, groupBy?: string): Promise<{ items: ConversationMessage[] }>;
   downloadExport(id: string, format?: 'json' | 'markdown'): Promise<void>;
   exportUrl(id: string, format?: 'json' | 'markdown'): string;
   getAuthHeader(): string;
@@ -116,7 +117,7 @@ class BrowserApiClient implements ApiClient {
   async getConversationMessages(
     groupKey: string,
     groupBy = 'system_prompt',
-  ): Promise<{ items: RequestDetail[] }> {
+  ): Promise<{ items: ConversationMessage[] }> {
     return fetchConversationMessages(this.baseUrl, this.uiApiKey, groupKey, groupBy);
   }
 
@@ -223,7 +224,7 @@ async function fetchConversationMessages(
   apiKey: string,
   groupKey: string,
   groupBy: string,
-): Promise<{ items: RequestDetail[] }> {
+): Promise<{ items: ConversationMessage[] }> {
   const url = `${trimBaseUrl(baseUrl)}/ui/v1/conversations/messages?group_by=${encodeURIComponent(groupBy)}`;
   const resp = await fetch(url, {
     method: 'POST',
@@ -236,7 +237,7 @@ async function fetchConversationMessages(
     throw new ApiError(resp.status, resp.statusText, text);
   }
 
-  return resp.json() as Promise<{ items: RequestDetail[] }>;
+  return resp.json() as Promise<{ items: ConversationMessage[] }>;
 }
 
 function trimBaseUrl(baseUrl: string): string {

@@ -3,9 +3,12 @@ import { useState } from 'react';
 interface JsonViewerProps {
   data: unknown;
   depth?: number;
+  path?: string[];
+  collapsedPaths?: string[];
+  expandedPaths?: string[];
 }
 
-export function JsonViewer({ data, depth = 0 }: JsonViewerProps) {
+export function JsonViewer({ data, depth = 0, path = [], collapsedPaths = [], expandedPaths = [] }: JsonViewerProps) {
   if (data === null || data === undefined) {
     return <span style={{ color: '#6e7681' }}>null</span>;
   }
@@ -19,16 +22,31 @@ export function JsonViewer({ data, depth = 0 }: JsonViewerProps) {
     return <span style={{ color: '#a5d6ff' }}>"{data}"</span>;
   }
   if (Array.isArray(data)) {
-    return <ArrayNode data={data} depth={depth} />;
+    return <ArrayNode data={data} depth={depth} path={path} collapsedPaths={collapsedPaths} expandedPaths={expandedPaths} />;
   }
   if (typeof data === 'object') {
-    return <ObjectNode data={data as Record<string, unknown>} depth={depth} />;
+    return <ObjectNode data={data as Record<string, unknown>} depth={depth} path={path} collapsedPaths={collapsedPaths} expandedPaths={expandedPaths} />;
   }
   return <span>{String(data)}</span>;
 }
 
-function ObjectNode({ data, depth }: { data: Record<string, unknown>; depth: number }) {
-  const [collapsed, setCollapsed] = useState(depth > 2);
+function ObjectNode({
+  data,
+  depth,
+  path,
+  collapsedPaths,
+  expandedPaths,
+}: {
+  data: Record<string, unknown>;
+  depth: number;
+  path: string[];
+  collapsedPaths: string[];
+  expandedPaths: string[];
+}) {
+  const pathKey = path.join('.');
+  const [collapsed, setCollapsed] = useState(
+    expandedPaths.includes(pathKey) ? false : depth > 2 || collapsedPaths.includes(pathKey),
+  );
   const keys = Object.keys(data);
   if (keys.length === 0) return <span style={{ color: '#8b949e' }}>{'{}'}</span>;
 
@@ -51,7 +69,13 @@ function ObjectNode({ data, depth }: { data: Record<string, unknown>; depth: num
               <span key={k} style={{ display: 'block' }}>
                 <span style={{ color: '#ff7b72' }}>"{k}"</span>
                 <span style={{ color: '#8b949e' }}>: </span>
-                <JsonViewer data={data[k]} depth={depth + 1} />
+                <JsonViewer
+                  data={data[k]}
+                  depth={depth + 1}
+                  path={[...path, k]}
+                  collapsedPaths={collapsedPaths}
+                  expandedPaths={expandedPaths}
+                />
                 <span style={{ color: '#8b949e' }}>,</span>
               </span>
             ))}
@@ -63,8 +87,23 @@ function ObjectNode({ data, depth }: { data: Record<string, unknown>; depth: num
   );
 }
 
-function ArrayNode({ data, depth }: { data: unknown[]; depth: number }) {
-  const [collapsed, setCollapsed] = useState(depth > 2);
+function ArrayNode({
+  data,
+  depth,
+  path,
+  collapsedPaths,
+  expandedPaths,
+}: {
+  data: unknown[];
+  depth: number;
+  path: string[];
+  collapsedPaths: string[];
+  expandedPaths: string[];
+}) {
+  const pathKey = path.join('.');
+  const [collapsed, setCollapsed] = useState(
+    expandedPaths.includes(pathKey) ? false : depth > 2 || collapsedPaths.includes(pathKey),
+  );
   if (data.length === 0) return <span style={{ color: '#8b949e' }}>{'[]'}</span>;
 
   return (
@@ -84,7 +123,13 @@ function ArrayNode({ data, depth }: { data: unknown[]; depth: number }) {
           <span style={{ paddingLeft: '1.2em', display: 'block' }}>
             {data.map((item, i) => (
               <span key={i} style={{ display: 'block' }}>
-                <JsonViewer data={item} depth={depth + 1} />
+                <JsonViewer
+                  data={item}
+                  depth={depth + 1}
+                  path={[...path, String(i)]}
+                  collapsedPaths={collapsedPaths}
+                  expandedPaths={expandedPaths}
+                />
                 {i < data.length - 1 && <span style={{ color: '#8b949e' }}>,</span>}
               </span>
             ))}

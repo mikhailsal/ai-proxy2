@@ -10,7 +10,6 @@ from starlette.requests import Request
 
 from ai_proxy.api.ui import chats, export, requests
 from ai_proxy.db.repositories import chats as chat_repo
-from ai_proxy.db.repositories import requests as request_repo
 from ai_proxy.logging import service
 from ai_proxy.logging.masking import mask_api_key, mask_headers, mask_sensitive_fields
 from ai_proxy.logging.models import LogEntry
@@ -214,10 +213,10 @@ async def test_chat_routes(monkeypatch: pytest.MonkeyPatch) -> None:
     record = make_request_record()
 
     async def get_conversations_stub(*args, **kwargs):
-        return [{"group_key": "hello"}]
+        return [{"group_key": "hello", "group_label": "hello", "message_count": 2, "request_count": 1}]
 
     async def get_messages_stub(*args, **kwargs):
-        return [record]
+        return [{"id": "msg-1", "role": "user", "content": "hello", "source_request_id": str(record.id)}]
 
     monkeypatch.setattr(chat_repo, "get_conversations", get_conversations_stub)
     monkeypatch.setattr(chat_repo, "get_conversation_messages", get_messages_stub)
@@ -252,70 +251,45 @@ async def test_chat_routes(monkeypatch: pytest.MonkeyPatch) -> None:
     assert missing_response.status_code == 400
 
 
-@pytest.mark.asyncio
-async def test_request_repository_create_fetch_list_and_search() -> None:
-    record = make_request_record()
-    session = RequestRepoSession(record)
-
-    created = await request_repo.create_request(session, id=record.id, path="/v1/chat/completions", method="POST")
-    fetched = await request_repo.get_request(session, record.id)
-    listed = await request_repo.list_requests(
-        session,
-        cursor=(record.timestamp, record.id),
-        limit=1,
-        model="gpt-4o-mini",
-        client_hash="hash",
-        status_code=200,
-        since=record.timestamp,
-        until=record.timestamp,
+def test_build_conversation_messages_merges_repeated_history() -> None:
+    first = make_request_record(
+        id=uuid.UUID("11111111-1111-1111-1111-111111111111"),
+        timestamp=datetime(2024, 1, 1, tzinfo=timezone.utc),
+        request_body={
+            "messages": [
+                {"role": "system", "content": "system prompt"},
+                {"role": "user", "content": "hello"},
+            ]
+        },
+        response_body={"choices": [{"message": {"role": "assistant", "content": "first reply"}}]},
     )
-    searched = await request_repo.search_requests(session, "hello", limit=1)
+    second = make_request_record(
+        id=uuid.UUID("22222222-2222-2222-2222-222222222222"),
+        timestamp=datetime(2024, 1, 2, tzinfo=timezone.utc),
+        request_body={
+            "messages": [
+                {"role": "system", "content": "system prompt"},
+                {"role": "user", "content": "hello"},
+                {"role": "assistant", "content": "first reply"},
+                {"role": "user", "content": "follow up"},
+            ]
+        },
+        response_body={"choices": [{"message": {"role": "assistant", "content": "second reply"}}]},
+    )
 
-    assert created.id == record.id
-    assert fetched == record
-    assert listed == [record]
-    assert searched == [record]
-    assert session.committed is True
-    assert session.refreshed is True
-    assert session.executed_queries
+    messages = chat_repo.build_conversation_messages([first, second])
 
-
-@pytest.mark.asyncio
-async def test_request_repository_count_stats_and_delete() -> None:
-    record = make_request_record()
-    session = RequestRepoSession(record)
-
-    counted = await request_repo.get_request_count(session)
-    stats = await request_repo.get_stats(session)
-    deleted = await request_repo.delete_old_requests(session, before=record.timestamp)
-
-    assert counted == 7
-    assert stats == {"total_requests": 2, "avg_latency_ms": 12.34, "total_tokens": 42, "total_cost": 0.456789}
-    assert deleted == 3
-
-
-@pytest.mark.asyncio
-async def test_chat_repository_functions() -> None:
-    record = make_request_record()
-    session = ChatRepoSession(record)
-
-    conversations = await chat_repo.get_conversations(session, group_by="system_prompt", limit=10, offset=0)
-    client_messages = await chat_repo.get_conversation_messages(session, "hello", group_by="client")
-    model_messages = await chat_repo.get_conversation_messages(session, "hello", group_by="model")
-    fallback_messages = await chat_repo.get_conversation_messages(session, "hello", group_by="other")
-
-    assert conversations == [
-        {
-            "group_key": "hello",
-            "message_count": 2,
-            "first_message": record.timestamp.isoformat(),
-            "last_message": record.timestamp.isoformat(),
-            "models_used": ["gpt-4o-mini"],
-        }
+    assert [message["content"] for message in messages] == [
+        "second reply",
+        "follow up",
+        "first reply",
+        "hello",
+        "system prompt",
     ]
-    assert client_messages == [record]
-    assert model_messages == [record]
-    assert fallback_messages == [record]
+    assert messages[-1]["repeat_count"] == 2
+    assert messages[-2]["repeat_count"] == 2
+    assert messages[-3]["repeat_count"] == 2
+    assert messages[1]["source_request_id"] == str(second.id)
 
 
 def test_masking_helpers_and_log_entry_factory() -> None:

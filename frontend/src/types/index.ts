@@ -41,7 +41,9 @@ export interface Stats {
 
 export interface Conversation {
   group_key: string;
+  group_label?: string;
   message_count: number;
+  request_count?: number;
   first_message: string | null;
   last_message: string | null;
   models_used: string[];
@@ -49,6 +51,24 @@ export interface Conversation {
 
 export interface ConversationsPage {
   items: Conversation[];
+}
+
+export interface ConversationMessage {
+  id: string;
+  origin: 'request' | 'response';
+  role: string;
+  content: string;
+  raw_message: Record<string, unknown> | null;
+  tool_names: string[];
+  meta_tags: Record<string, unknown>;
+  source_request_id: string;
+  source_request_timestamp: string | null;
+  source_message_index: number;
+  last_seen_at: string | null;
+  repeat_count: number;
+  model: string | null;
+  latency_ms: number | null;
+  total_tokens: number | null;
 }
 
 export interface ConnectionSettings {

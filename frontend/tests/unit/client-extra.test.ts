@@ -52,10 +52,10 @@ describe('BrowserApiClient', () => {
   });
 
   it('posts conversation message lookups and exposes export helpers', async () => {
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ items: [{ id: 'req-1' }] }));
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ items: [{ id: 'msg-1', source_request_id: 'req-1' }] }));
     const client = createApiClient({ baseUrl: 'http://localhost:8000/', uiApiKey: '' });
 
-    await expect(client.getConversationMessages('team a', 'model')).resolves.toEqual({ items: [{ id: 'req-1' }] });
+    await expect(client.getConversationMessages('team a', 'model')).resolves.toEqual({ items: [{ id: 'msg-1', source_request_id: 'req-1' }] });
     expect(fetchMock).toHaveBeenCalledWith('http://localhost:8000/ui/v1/conversations/messages?group_by=model', {
       body: JSON.stringify({ group_key: 'team a' }),
       headers: { 'Content-Type': 'application/json' },

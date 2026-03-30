@@ -6,7 +6,7 @@ import { ApiContext } from '../../src/hooks/useApi';
 import { JsonViewer } from '../../src/components/JsonViewer/JsonViewer';
 import { RequestDetail } from '../../src/components/RequestDetail/RequestDetail';
 import { ChatView } from '../../src/components/ChatView/ChatView';
-import type { RequestDetail as RequestDetailType, RequestSummary } from '../../src/types';
+import type { ConversationMessage, RequestDetail as RequestDetailType, RequestSummary } from '../../src/types';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -47,6 +47,14 @@ describe('JsonViewer', () => {
 
     expect(screen.getByText('"alpha"')).toBeInTheDocument();
     expect(screen.getByText('"nested"')).toBeInTheDocument();
+  });
+
+  it('collapses configured paths by default', async () => {
+    render(<JsonViewer data={{ history: { expanded: [{ role: 'user', content: 'hello' }] } }} collapsedPaths={['history.expanded']} />);
+
+    expect(screen.getByText('[ 1 items ]')).toBeInTheDocument();
+    await userEvent.click(screen.getByTitle('expand'));
+    expect(screen.getByText('{ 2 keys }')).toBeInTheDocument();
   });
 });
 
@@ -106,8 +114,9 @@ describe('ChatView', () => {
     const onSelectGroup = vi.fn();
     const api = {
       getConversationMessages: vi.fn(),
+      getRequest: vi.fn(),
       getConversations: vi.fn().mockResolvedValue({ items: [
-        { group_key: 'team-a', message_count: 2, models_used: ['gpt-4o-mini'] },
+        { group_key: 'team-a', group_label: 'team-a', message_count: 2, request_count: 1, models_used: ['gpt-4o-mini'] },
       ] }),
     };
 
@@ -119,17 +128,18 @@ describe('ChatView', () => {
     expect(screen.getByText('Select a conversation to view messages.')).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText('team-a')).toBeInTheDocument());
 
-    await userEvent.selectOptions(screen.getByRole('combobox'), 'model');
+    await userEvent.selectOptions(screen.getByRole('combobox'), 'system_prompt_first_user');
     await userEvent.click(screen.getByText('team-a'));
 
-    expect(onGroupByChange).toHaveBeenCalledWith('model');
+    expect(onGroupByChange).toHaveBeenCalledWith('system_prompt_first_user');
     expect(onSelectGroup).toHaveBeenCalledWith('team-a');
   });
 
-  it('renders timeline messages, raw payloads, and empty states', async () => {
+  it('renders merged timeline messages newest first, lazy raw requests, and empty states', async () => {
     const api = {
-      getConversationMessages: vi.fn().mockResolvedValue({ items: [makeRequestDetail()] }),
+      getConversationMessages: vi.fn().mockResolvedValue({ items: makeConversationMessages() }),
       getConversations: vi.fn().mockResolvedValue({ items: [] }),
+      getRequest: vi.fn().mockResolvedValue(makeRequestDetail()),
     };
 
     const initialRender = renderWithApi(
@@ -138,12 +148,25 @@ describe('ChatView', () => {
     );
 
     await waitFor(() => expect(screen.getByText('No conversations found.')).toBeInTheDocument());
+    expect(screen.getByText('reply')).toBeInTheDocument();
     expect(screen.getByText('hello')).toBeInTheDocument();
     expect(screen.getByText('system prompt')).toBeInTheDocument();
-    expect(screen.getByText('reply')).toBeInTheDocument();
+    expect(screen.getByText('Assistant tool calls')).toBeInTheDocument();
+    expect(screen.getByText('lookup_weather')).toBeInTheDocument();
+    expect(screen.getByText('"city"')).toBeInTheDocument();
+    expect(screen.getAllByText('sent 2x')).toHaveLength(3);
+    expect(
+      screen.getByText('reply').compareDocumentPosition(screen.getByText('hello')) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Show raw' }));
-    expect(screen.getByText(/messages/)).toBeInTheDocument();
+    await userEvent.click(screen.getAllByRole('button', { name: 'Show raw request' })[0]);
+    await waitFor(() => expect(api.getRequest).toHaveBeenCalledWith('req-1'));
+    expect(screen.getByText('Request body')).toBeInTheDocument();
+    expect(screen.getByText('Response body')).toBeInTheDocument();
+    expect(screen.getByText('"tools"')).toBeInTheDocument();
+    expect(screen.getByText('"messages"')).toBeInTheDocument();
+    expect(screen.getByText('"choices"')).toBeInTheDocument();
+    expect(screen.queryByText('"__collapsed_previous_messages__"')).not.toBeInTheDocument();
 
     api.getConversationMessages.mockResolvedValueOnce({ items: [] });
     initialRender.unmount();
@@ -191,15 +214,99 @@ function makeRequestDetail(): RequestDetailType {
     ...makeRequestSummary({ error_message: 'backend error' }),
     request_headers: { authorization: 'Bearer redacted' },
     request_body: {
+      tools: [{ type: 'function', function: { name: 'lookup_weather' } }],
       messages: [
         { role: 'system', content: 'system prompt' },
         { role: 'user', content: 'hello' },
       ],
     },
     response_headers: { 'content-type': 'application/json' },
-    response_body: { choices: [{ message: { content: 'reply' } }] },
+    response_body: { choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: 'reply' } }] },
     stream_chunks: [{ delta: 'hi' }],
     reasoning_tokens: null,
     metadata: null,
   };
+}
+
+function makeConversationMessages(): ConversationMessage[] {
+  return [
+    {
+      id: 'msg-3',
+      origin: 'response',
+      role: 'assistant',
+      content: 'reply',
+      raw_message: { role: 'assistant', content: 'reply' },
+      tool_names: [],
+      meta_tags: {},
+      source_request_id: 'req-1',
+      source_request_timestamp: '2024-01-01T00:00:00Z',
+      source_message_index: 2,
+      last_seen_at: '2024-01-01T00:00:00Z',
+      repeat_count: 1,
+      model: 'gpt-4o-mini',
+      latency_ms: 42,
+      total_tokens: 3,
+    },
+    {
+      id: 'msg-2b',
+      origin: 'response',
+      role: 'assistant',
+      content: 'Tool call: lookup_weather',
+      raw_message: {
+        role: 'assistant',
+        content: '',
+        tool_calls: [
+          {
+            id: 'call_weather_1',
+            type: 'function',
+            function: { name: 'lookup_weather', arguments: '{"city":"Berlin"}' },
+          },
+        ],
+      },
+      tool_names: ['lookup_weather'],
+      meta_tags: {},
+      source_request_id: 'req-1',
+      source_request_timestamp: '2024-01-01T00:00:00Z',
+      source_message_index: 2,
+      last_seen_at: '2024-01-02T00:00:00Z',
+      repeat_count: 2,
+      model: 'gpt-4o-mini',
+      latency_ms: 42,
+      total_tokens: 3,
+    },
+    {
+      id: 'msg-2',
+      origin: 'request',
+      role: 'user',
+      content: 'hello',
+      raw_message: { role: 'user', content: 'hello' },
+      tool_names: [],
+      meta_tags: {},
+      source_request_id: 'req-1',
+      source_request_timestamp: '2024-01-01T00:00:00Z',
+      source_message_index: 1,
+      last_seen_at: '2024-01-02T00:00:00Z',
+      repeat_count: 2,
+      model: 'gpt-4o-mini',
+      latency_ms: 42,
+      total_tokens: 3,
+    },
+    {
+      id: 'msg-1',
+      origin: 'request',
+      role: 'system',
+      content: 'system prompt',
+      raw_message: { role: 'system', content: 'system prompt' },
+      tool_names: [],
+      meta_tags: { name: 'system' },
+      source_request_id: 'req-1',
+      source_request_timestamp: '2024-01-01T00:00:00Z',
+      source_message_index: 0,
+      last_seen_at: '2024-01-02T00:00:00Z',
+      repeat_count: 2,
+      model: 'gpt-4o-mini',
+      latency_ms: 42,
+      total_tokens: 3,
+    },
+  ];
 }

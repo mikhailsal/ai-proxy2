@@ -7,7 +7,6 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ai_proxy.api.deps import get_session, require_ui_auth
-from ai_proxy.api.ui.requests import _serialize_request_full
 from ai_proxy.db.repositories import chats as chat_repo
 
 router = APIRouter(dependencies=[Depends(require_ui_auth)])
@@ -36,5 +35,4 @@ async def get_conversation_messages(
     if not group_key:
         return JSONResponse({"error": "group_key is required"}, status_code=400)
     messages = await chat_repo.get_conversation_messages(session, group_key, group_by)
-    items = [_serialize_request_full(m) for m in messages]
-    return JSONResponse({"items": items})
+    return JSONResponse({"items": messages})

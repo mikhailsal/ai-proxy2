@@ -280,7 +280,9 @@ async def test_chat_repository_grouping_branches() -> None:
     assert await chats_repo.get_conversations(session, group_by="client", limit=10, offset=0) == [
         {
             "group_key": "unknown",
-            "message_count": 1,
+            "group_label": "unknown",
+            "message_count": 0,
+            "request_count": 1,
             "first_message": None,
             "last_message": None,
             "models_used": [],
