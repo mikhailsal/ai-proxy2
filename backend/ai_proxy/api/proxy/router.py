@@ -26,6 +26,7 @@ logger = structlog.get_logger()
 router = APIRouter()
 HOP_BY_HOP_HEADERS = {
     "connection",
+    "content-encoding",
     "content-length",
     "keep-alive",
     "proxy-authenticate",

@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,12 +27,16 @@ async def list_conversations(
     return JSONResponse({"items": conversations})
 
 
-@router.get("/ui/v1/conversations/{group_key}/messages")
+@router.post("/ui/v1/conversations/messages")
 async def get_conversation_messages(
-    group_key: str,
+    request: Request,
     session: SessionDep,
     group_by: str = Query("system_prompt"),
 ) -> JSONResponse:
+    body = await request.json()
+    group_key = body.get("group_key", "")
+    if not group_key:
+        return JSONResponse({"error": "group_key is required"}, status_code=400)
     messages = await chat_repo.get_conversation_messages(session, group_key, group_by)
     items = [_serialize_request_full(m) for m in messages]
     return JSONResponse({"items": items})

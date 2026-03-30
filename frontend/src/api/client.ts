@@ -179,9 +179,17 @@ export function createApiClient(settings: ApiSettings): ApiClient {
       groupBy = 'system_prompt',
     ): Promise<{ items: RequestDetail[] }> {
       const qs = new URLSearchParams({ group_by: groupBy });
-      return api<{ items: RequestDetail[] }>(
-        `/ui/v1/conversations/${encodeURIComponent(groupKey)}/messages?${qs.toString()}`,
-      );
+      const url = `${baseUrl.replace(/\/$/, '')}/ui/v1/conversations/messages?${qs.toString()}`;
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: getHeaders(uiApiKey),
+        body: JSON.stringify({ group_key: groupKey }),
+      });
+      if (!resp.ok) {
+        const text = await resp.text();
+        throw new ApiError(resp.status, resp.statusText, text);
+      }
+      return resp.json() as Promise<{ items: RequestDetail[] }>;
     },
 
     async downloadExport(id: string, format: 'json' | 'markdown' = 'json'): Promise<void> {
