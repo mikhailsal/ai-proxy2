@@ -1,4 +1,4 @@
-.PHONY: help lint format test-unit test-integration test-all coverage up down up-dev down-dev migrate migrate-create frontend-install frontend-lint frontend-test
+.PHONY: help lint format test-unit test-integration test-all coverage frontend-coverage quality-check install-hooks up down up-dev down-dev migrate migrate-create frontend-install frontend-lint frontend-test
 
 # ── Defaults ──────────────────────────────────────────────────────────
 SHELL := /bin/bash
@@ -38,6 +38,20 @@ frontend-lint: ## Lint frontend
 
 frontend-test: ## Run frontend tests
 	cd $(FRONTEND_DIR) && npx vitest run
+
+frontend-coverage: ## Run frontend tests with coverage
+	cd $(FRONTEND_DIR) && npm run test:coverage
+
+quality-check: ## Run the full quality gate used by git hooks
+	python scripts/check_code_limits.py
+	$(MAKE) lint
+	$(MAKE) coverage
+	$(MAKE) frontend-lint
+	$(MAKE) frontend-coverage
+
+install-hooks: ## Install tracked git hooks for this repository
+	git config core.hooksPath .githooks
+	chmod +x .githooks/pre-commit
 
 frontend-build: ## Build frontend for production
 	cd $(FRONTEND_DIR) && npm run build

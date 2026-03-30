@@ -25,9 +25,7 @@ class OpenAICompatAdapter(BaseAdapter):
                 out[h] = headers[h]
         return out
 
-    async def chat_completions(
-        self, request_body: dict[str, Any], headers: dict[str, str]
-    ) -> ProviderResponse:
+    async def chat_completions(self, request_body: dict[str, Any], headers: dict[str, str]) -> ProviderResponse:
         url = f"{self.endpoint_url}/chat/completions"
         req_headers = self._build_headers(headers)
         async with httpx.AsyncClient(timeout=self.timeout) as client:

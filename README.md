@@ -62,7 +62,23 @@ make migrate
 
 Use `make migrate-rollback` to verify the last revision can be reversed locally.
 
-### 4. Run
+### 4. Install quality hooks
+
+Set the repository-local Git hooks path so commits run the tracked pre-commit checks:
+
+```bash
+make install-hooks
+```
+
+The pre-commit workflow enforces:
+
+- backend Ruff and mypy
+- frontend ESLint
+- repository code-size limits
+- backend coverage of at least 95%
+- frontend line and statement coverage of at least 95%
+
+### 5. Run
 
 **Development** (backend on :8000, Dockerized frontend on :3000, optional Vite frontend for local UI edits):
 
@@ -151,3 +167,14 @@ Streaming (`"stream": true`) is supported.
 | `OPENROUTER_API_KEY` | If using OpenRouter | Provider API key |
 | `DOMAIN` | Production | Your domain name |
 | `ACME_EMAIL` | Production | Email for Let's Encrypt |
+
+## Quality checks
+
+Run the full local quality gate before opening a PR:
+
+```bash
+make quality-check
+```
+
+This runs the repository line-limit checker, backend lint/type checks,
+backend coverage, frontend lint, and frontend coverage.

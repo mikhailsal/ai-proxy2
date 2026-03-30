@@ -33,49 +33,14 @@ export function ChatView({
 
   return (
     <div style={styles.container}>
-      <div style={styles.sidebar}>
-        <div style={styles.sidebarHeader}>
-          <span style={styles.sidebarTitle}>Conversations</span>
-          <select
-            style={styles.select}
-            value={groupBy}
-            onChange={e => onGroupByChange(e.target.value as ChatGroupBy)}
-          >
-            <option value="system_prompt">By System Prompt</option>
-            <option value="client">By Client</option>
-            <option value="model">By Model</option>
-          </select>
-        </div>
-        {isLoading ? (
-          <div style={styles.loading}>Loading…</div>
-        ) : (
-          <div style={styles.convList}>
-            {(conversations?.items ?? []).map(conv => (
-              <div
-                key={conv.group_key}
-                style={{
-                  ...styles.convItem,
-                  background: selectedGroup === conv.group_key ? '#21262d' : 'transparent',
-                  borderLeft: selectedGroup === conv.group_key ? '2px solid #58a6ff' : '2px solid transparent',
-                }}
-                onClick={() => onSelectGroup(conv.group_key)}
-              >
-                <div style={styles.convPreview}>
-                  {(conv.group_key ?? 'Unknown').slice(0, 60)}
-                  {conv.group_key?.length > 60 ? '…' : ''}
-                </div>
-                <div style={styles.convMeta}>
-                  <span>{conv.message_count} messages</span>
-                  <span>{conv.models_used?.slice(0, 2).join(', ')}</span>
-                </div>
-              </div>
-            ))}
-            {(conversations?.items ?? []).length === 0 && (
-              <div style={styles.loading}>No conversations found.</div>
-            )}
-          </div>
-        )}
-      </div>
+      <ConversationSidebar
+        conversations={conversations?.items ?? []}
+        groupBy={groupBy}
+        isLoading={isLoading}
+        onGroupByChange={onGroupByChange}
+        onSelectGroup={onSelectGroup}
+        selectedGroup={selectedGroup}
+      />
 
       <div style={styles.timeline}>
         {!selectedGroup ? (
@@ -83,6 +48,83 @@ export function ChatView({
         ) : (
           <ChatTimeline requests={messages?.items ?? []} />
         )}
+      </div>
+    </div>
+  );
+}
+
+function ConversationSidebar({
+  conversations,
+  groupBy,
+  isLoading,
+  onGroupByChange,
+  onSelectGroup,
+  selectedGroup,
+}: {
+  conversations: Array<{ group_key: string; message_count: number; models_used: string[] }>;
+  groupBy: ChatGroupBy;
+  isLoading: boolean;
+  onGroupByChange: (groupBy: ChatGroupBy) => void;
+  onSelectGroup: (groupKey: string) => void;
+  selectedGroup: string | null;
+}) {
+  return (
+    <div style={styles.sidebar}>
+      <div style={styles.sidebarHeader}>
+        <span style={styles.sidebarTitle}>Conversations</span>
+        <select
+          style={styles.select}
+          value={groupBy}
+          onChange={event => onGroupByChange(event.target.value as ChatGroupBy)}
+        >
+          <option value="system_prompt">By System Prompt</option>
+          <option value="client">By Client</option>
+          <option value="model">By Model</option>
+        </select>
+      </div>
+      {isLoading ? <div style={styles.loading}>Loading…</div> : null}
+      {!isLoading ? (
+        <div style={styles.convList}>
+          {conversations.map(conv => (
+            <ConversationRow
+              conversation={conv}
+              isSelected={selectedGroup === conv.group_key}
+              key={conv.group_key}
+              onSelectGroup={onSelectGroup}
+            />
+          ))}
+          {conversations.length === 0 ? <div style={styles.loading}>No conversations found.</div> : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ConversationRow({
+  conversation,
+  isSelected,
+  onSelectGroup,
+}: {
+  conversation: { group_key: string; message_count: number; models_used: string[] };
+  isSelected: boolean;
+  onSelectGroup: (groupKey: string) => void;
+}) {
+  const preview = (conversation.group_key ?? 'Unknown').slice(0, 60);
+  const suffix = conversation.group_key?.length > 60 ? '…' : '';
+
+  return (
+    <div
+      style={{
+        ...styles.convItem,
+        background: isSelected ? '#21262d' : 'transparent',
+        borderLeft: isSelected ? '2px solid #58a6ff' : '2px solid transparent',
+      }}
+      onClick={() => onSelectGroup(conversation.group_key)}
+    >
+      <div style={styles.convPreview}>{preview}{suffix}</div>
+      <div style={styles.convMeta}>
+        <span>{conversation.message_count} messages</span>
+        <span>{conversation.models_used?.slice(0, 2).join(', ')}</span>
       </div>
     </div>
   );

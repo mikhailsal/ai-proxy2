@@ -39,15 +39,17 @@ def _serialize_request(req: ProxyRequest) -> dict[str, Any]:
 
 def _serialize_request_full(req: ProxyRequest) -> dict[str, Any]:
     data = _serialize_request(req)
-    data.update({
-        "request_headers": req.request_headers,
-        "request_body": req.request_body,
-        "response_headers": req.response_headers,
-        "response_body": req.response_body,
-        "stream_chunks": req.stream_chunks,
-        "reasoning_tokens": req.reasoning_tokens,
-        "metadata": req.metadata_,
-    })
+    data.update(
+        {
+            "request_headers": req.request_headers,
+            "request_body": req.request_body,
+            "response_headers": req.response_headers,
+            "response_body": req.response_body,
+            "stream_chunks": req.stream_chunks,
+            "reasoning_tokens": req.reasoning_tokens,
+            "metadata": req.metadata_,
+        }
+    )
     return data
 
 
@@ -82,11 +84,7 @@ async def list_requests(
     )
 
     items = [_serialize_request(r) for r in reqs]
-    next_cursor = (
-        req_repo.encode_cursor(reqs[-1].timestamp, reqs[-1].id)
-        if reqs and reqs[-1].timestamp
-        else None
-    )
+    next_cursor = req_repo.encode_cursor(reqs[-1].timestamp, reqs[-1].id) if reqs and reqs[-1].timestamp else None
 
     return JSONResponse({"items": items, "next_cursor": next_cursor})
 

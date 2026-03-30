@@ -86,6 +86,7 @@ def create_app() -> FastAPI:
     @application.post("/admin/reload-config")
     async def reload_config() -> dict[str, str]:
         from ai_proxy.config.loader import reload_config as do_reload
+
         settings = get_settings()
         config = do_reload(settings.config_path)
         build_registry(config)

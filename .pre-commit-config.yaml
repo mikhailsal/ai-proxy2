@@ -41,7 +41,25 @@ repos:
     hooks:
       - id: eslint
         name: eslint (frontend)
-        entry: bash -c 'cd frontend && npx eslint --max-warnings 0 "$@"' --
+        entry: bash -c 'cd frontend && npm run lint'
         language: system
         files: ^frontend/src/.*\.(ts|tsx)$
         types: [file]
+        pass_filenames: false
+      - id: code-limits
+        name: code limits
+        entry: python scripts/check_code_limits.py
+        language: system
+        pass_filenames: false
+      - id: backend-coverage
+        name: backend coverage >= 95
+        entry: bash -c 'cd backend && if [ -x .venv/bin/python ]; then source .venv/bin/activate; fi && python -m pytest tests --cov=ai_proxy --cov-report=term-missing'
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: frontend-coverage
+        name: frontend coverage >= 95
+        entry: bash -c 'cd frontend && npm run test:coverage'
+        language: system
+        pass_filenames: false
+        always_run: true

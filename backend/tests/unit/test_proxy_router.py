@@ -76,9 +76,7 @@ async def test_non_streaming_transport_errors_become_gateway_failures(
     app = create_app()
     transport = ASGITransport(app=app)
 
-    adapter = FakeAdapter(
-        error=httpx.ConnectError("boom", request=httpx.Request("POST", "https://provider.example"))
-    )
+    adapter = FakeAdapter(error=httpx.ConnectError("boom", request=httpx.Request("POST", "https://provider.example")))
     route = SimpleNamespace(provider_name="openrouter", mapped_model="provider-model", adapter=adapter)
     logged_entries = []
 

@@ -1,6 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, createApiClient } from '../../src/api/client';
 
+interface DownloadEnvironment {
+  appendChild: ReturnType<typeof vi.spyOn>;
+  click: ReturnType<typeof vi.fn>;
+  createElement: ReturnType<typeof vi.spyOn>;
+  createObjectURLMock: ReturnType<typeof vi.fn>;
+  remove: ReturnType<typeof vi.fn>;
+  restore: () => void;
+  revokeObjectURLMock: ReturnType<typeof vi.fn>;
+}
+
 describe('createApiClient', () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -48,28 +58,7 @@ describe('createApiClient', () => {
         headers: { 'Content-Type': 'application/json' },
       }),
     );
-    const createObjectURLMock = vi.fn(() => 'blob:request-export');
-    const revokeObjectURLMock = vi.fn();
-    const originalCreateObjectURL = URL.createObjectURL;
-    const originalRevokeObjectURL = URL.revokeObjectURL;
-    Object.defineProperty(URL, 'createObjectURL', { value: createObjectURLMock, configurable: true });
-    Object.defineProperty(URL, 'revokeObjectURL', { value: revokeObjectURLMock, configurable: true });
-    const originalCreateElement = document.createElement.bind(document);
-    const click = vi.fn();
-    const remove = vi.fn();
-    const appendChild = vi.spyOn(document.body, 'appendChild').mockImplementation(node => node);
-    const createElement = vi.spyOn(document, 'createElement').mockImplementation(tagName => {
-      if (tagName === 'a') {
-        return {
-          click,
-          remove,
-          href: '',
-          download: '',
-        } as unknown as HTMLAnchorElement;
-      }
-
-      return originalCreateElement(tagName);
-    });
+    const downloadEnvironment = mockDownloadEnvironment();
 
     const client = createApiClient({ baseUrl: 'http://localhost:8000', uiApiKey: 'ui-secret' });
     await client.downloadExport('req-123', 'markdown');
@@ -83,14 +72,52 @@ describe('createApiClient', () => {
         },
       },
     );
-    expect(createObjectURLMock).toHaveBeenCalled();
-    expect(click).toHaveBeenCalled();
-    expect(remove).toHaveBeenCalled();
-    expect(revokeObjectURLMock).toHaveBeenCalledWith('blob:request-export');
+    expect(downloadEnvironment.createObjectURLMock).toHaveBeenCalled();
+    expect(downloadEnvironment.click).toHaveBeenCalled();
+    expect(downloadEnvironment.remove).toHaveBeenCalled();
+    expect(downloadEnvironment.revokeObjectURLMock).toHaveBeenCalledWith('blob:request-export');
 
-    appendChild.mockRestore();
-    createElement.mockRestore();
-    Object.defineProperty(URL, 'createObjectURL', { value: originalCreateObjectURL, configurable: true });
-    Object.defineProperty(URL, 'revokeObjectURL', { value: originalRevokeObjectURL, configurable: true });
+    downloadEnvironment.restore();
   });
 });
+
+function mockDownloadEnvironment(): DownloadEnvironment {
+  const createObjectURLMock = vi.fn(() => 'blob:request-export');
+  const revokeObjectURLMock = vi.fn();
+  const originalCreateObjectURL = URL.createObjectURL;
+  const originalRevokeObjectURL = URL.revokeObjectURL;
+  Object.defineProperty(URL, 'createObjectURL', { value: createObjectURLMock, configurable: true });
+  Object.defineProperty(URL, 'revokeObjectURL', { value: revokeObjectURLMock, configurable: true });
+
+  const originalCreateElement = document.createElement.bind(document);
+  const click = vi.fn();
+  const remove = vi.fn();
+  const appendChild = vi.spyOn(document.body, 'appendChild').mockImplementation(node => node);
+  const createElement = vi.spyOn(document, 'createElement').mockImplementation(tagName => {
+    if (tagName === 'a') {
+      return {
+        click,
+        remove,
+        href: '',
+        download: '',
+      } as unknown as HTMLAnchorElement;
+    }
+
+    return originalCreateElement(tagName);
+  });
+
+  return {
+    appendChild,
+    click,
+    createElement,
+    createObjectURLMock,
+    remove,
+    restore: () => {
+      appendChild.mockRestore();
+      createElement.mockRestore();
+      Object.defineProperty(URL, 'createObjectURL', { value: originalCreateObjectURL, configurable: true });
+      Object.defineProperty(URL, 'revokeObjectURL', { value: originalRevokeObjectURL, configurable: true });
+    },
+    revokeObjectURLMock,
+  };
+}

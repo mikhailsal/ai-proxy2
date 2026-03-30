@@ -21,9 +21,7 @@ async def list_conversations(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ) -> JSONResponse:
-    conversations = await chat_repo.get_conversations(
-        session, group_by=group_by, limit=limit, offset=offset
-    )
+    conversations = await chat_repo.get_conversations(session, group_by=group_by, limit=limit, offset=offset)
     return JSONResponse({"items": conversations})
 
 

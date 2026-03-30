@@ -72,9 +72,7 @@ async def _flush_loop(batch_size: int = 50, flush_interval: float = 5.0) -> None
             logger.exception("flush_loop_error", batch_size=len(entries))
 
 
-async def _write_batch(
-    session_factory: async_sessionmaker[AsyncSession], entries: list[LogEntry]
-) -> None:
+async def _write_batch(session_factory: async_sessionmaker[AsyncSession], entries: list[LogEntry]) -> None:
     async with session_factory() as session:
         for entry in entries:
             provider_id = await _resolve_provider_id(session, entry.provider_name)

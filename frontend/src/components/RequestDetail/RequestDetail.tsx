@@ -35,84 +35,139 @@ export function RequestDetail({ requestId, requestSummary = null, onClose }: Req
 
   return (
     <div style={styles.container}>
-      <div style={styles.header}>
-        <div style={styles.headerLeft}>
-          <span style={styles.id}>#{requestId.slice(0, 8)}…</span>
-          <span style={{ ...styles.badge, background: statusBg(request?.response_status_code ?? null) }}>
-            {request?.response_status_code ?? '...'}
-          </span>
-          <span style={styles.model}>{request?.model_requested ?? 'Loading request...'}</span>
-          {request?.model_resolved && request.model_resolved !== request.model_requested && (
-            <span style={styles.meta}>→ {request.model_resolved}</span>
-          )}
-        </div>
-        <div style={styles.headerRight}>
-          <button
-            onClick={() => handleExport('json')}
-            style={styles.exportButton}
-            disabled={exportingFormat !== null}
-          >
-            {exportingFormat === 'json' ? 'Exporting…' : 'JSON'}
-          </button>
-          <button
-            onClick={() => handleExport('markdown')}
-            style={styles.exportButton}
-            disabled={exportingFormat !== null}
-          >
-            {exportingFormat === 'markdown' ? 'Exporting…' : 'MD'}
-          </button>
-          <button onClick={onClose} style={styles.closeBtn}>✕</button>
-        </div>
-      </div>
-
-      <div style={styles.metaRow}>
-        <MetaBadge label="Latency" value={request?.latency_ms != null ? `${Math.round(request.latency_ms)}ms` : '-'} />
-        <MetaBadge label="In" value={String(request?.input_tokens ?? '-')} />
-        <MetaBadge label="Out" value={String(request?.output_tokens ?? '-')} />
-        <MetaBadge label="Total" value={String(request?.total_tokens ?? '-')} />
-        {request?.cost != null && <MetaBadge label="Cost" value={`$${request.cost.toFixed(6)}`} />}
-        {request?.cache_status && <MetaBadge label="Cache" value={request.cache_status} />}
-        <MetaBadge label="Time" value={request ? new Date(request.timestamp).toLocaleString() : '-'} />
-      </div>
+      <RequestDetailHeader
+        exportingFormat={exportingFormat}
+        onClose={onClose}
+        onExport={handleExport}
+        request={request}
+        requestId={requestId}
+      />
+      <RequestDetailMetaRow request={request} />
       {exportError && <div style={styles.exportError}>{exportError}</div>}
       {error && <div style={styles.exportError}>{error instanceof Error ? error.message : String(error)}</div>}
+      <RequestDetailBody data={data} isLoading={isLoading} />
+    </div>
+  );
+}
 
-      {isLoading ? (
-        <div style={styles.loading}>Loading detail…</div>
-      ) : data ? (
-        <div style={styles.sections}>
-          <Section title="Request Body">
-            <pre style={styles.pre}>
-              <JsonViewer data={data.request_body} />
-            </pre>
-          </Section>
-          <Section title="Response Body">
-            <pre style={styles.pre}>
-              <JsonViewer data={data.response_body} />
-            </pre>
-          </Section>
-          {data.stream_chunks && data.stream_chunks.length > 0 && (
-            <Section title={`Stream Chunks (${data.stream_chunks.length})`} collapsed>
-              <pre style={styles.pre}>
-                <JsonViewer data={data.stream_chunks} />
-              </pre>
-            </Section>
-          )}
-          {data.request_headers && (
-            <Section title="Request Headers" collapsed>
-              <pre style={styles.pre}>
-                <JsonViewer data={data.request_headers} />
-              </pre>
-            </Section>
-          )}
-          {data.error_message && (
-            <Section title="Error">
-              <pre style={{ ...styles.pre, color: '#f85149' }}>{data.error_message}</pre>
-            </Section>
-          )}
-        </div>
+function RequestDetailHeader({
+  exportingFormat,
+  onClose,
+  onExport,
+  request,
+  requestId,
+}: {
+  exportingFormat: 'json' | 'markdown' | null;
+  onClose: () => void;
+  onExport: (format: 'json' | 'markdown') => Promise<void>;
+  request: RequestSummary | RequestDetailType | null;
+  requestId: string;
+}) {
+  return (
+    <div style={styles.header}>
+      <div style={styles.headerLeft}>
+        <span style={styles.id}>#{requestId.slice(0, 8)}…</span>
+        <span style={{ ...styles.badge, background: statusBg(request?.response_status_code ?? null) }}>
+          {request?.response_status_code ?? '...'}
+        </span>
+        <span style={styles.model}>{request?.model_requested ?? 'Loading request...'}</span>
+        {request?.model_resolved && request.model_resolved !== request.model_requested ? (
+          <span style={styles.meta}>→ {request.model_resolved}</span>
+        ) : null}
+      </div>
+      <div style={styles.headerRight}>
+        <ExportButton exportingFormat={exportingFormat} format="json" onExport={onExport} />
+        <ExportButton exportingFormat={exportingFormat} format="markdown" onExport={onExport} />
+        <button onClick={onClose} style={styles.closeBtn}>✕</button>
+      </div>
+    </div>
+  );
+}
+
+function ExportButton({
+  exportingFormat,
+  format,
+  onExport,
+}: {
+  exportingFormat: 'json' | 'markdown' | null;
+  format: 'json' | 'markdown';
+  onExport: (format: 'json' | 'markdown') => Promise<void>;
+}) {
+  const label = format === 'json' ? 'JSON' : 'MD';
+  const loadingLabel = format === 'json' ? 'Exporting…' : 'Exporting…';
+
+  return (
+    <button onClick={() => void onExport(format)} style={styles.exportButton} disabled={exportingFormat !== null}>
+      {exportingFormat === format ? loadingLabel : label}
+    </button>
+  );
+}
+
+function RequestDetailMetaRow({
+  request,
+}: {
+  request: RequestSummary | RequestDetailType | null;
+}) {
+  return (
+    <div style={styles.metaRow}>
+      <MetaBadge label="Latency" value={request?.latency_ms != null ? `${Math.round(request.latency_ms)}ms` : '-'} />
+      <MetaBadge label="In" value={String(request?.input_tokens ?? '-')} />
+      <MetaBadge label="Out" value={String(request?.output_tokens ?? '-')} />
+      <MetaBadge label="Total" value={String(request?.total_tokens ?? '-')} />
+      {request?.cost != null ? <MetaBadge label="Cost" value={`$${request.cost.toFixed(6)}`} /> : null}
+      {request?.cache_status ? <MetaBadge label="Cache" value={request.cache_status} /> : null}
+      <MetaBadge label="Time" value={request ? new Date(request.timestamp).toLocaleString() : '-'} />
+    </div>
+  );
+}
+
+function RequestDetailBody({
+  data,
+  isLoading,
+}: {
+  data: RequestDetailType | undefined;
+  isLoading: boolean;
+}) {
+  if (isLoading) {
+    return <div style={styles.loading}>Loading detail…</div>;
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  return (
+    <div style={styles.sections}>
+      <JsonSection data={data.request_body} title="Request Body" />
+      <JsonSection data={data.response_body} title="Response Body" />
+      {data.stream_chunks && data.stream_chunks.length > 0 ? (
+        <JsonSection data={data.stream_chunks} title={`Stream Chunks (${data.stream_chunks.length})`} collapsed />
+      ) : null}
+      {data.request_headers ? <JsonSection data={data.request_headers} title="Request Headers" collapsed /> : null}
+      {data.error_message ? (
+        <Section title="Error">
+          <pre style={{ ...styles.pre, color: '#f85149' }}>{data.error_message}</pre>
+        </Section>
       ) : null}
     </div>
+  );
+}
+
+function JsonSection({
+  data,
+  title,
+  collapsed = false,
+}: {
+  data: unknown;
+  title: string;
+  collapsed?: boolean;
+}) {
+  return (
+    <Section title={title} collapsed={collapsed}>
+      <pre style={styles.pre}>
+        <JsonViewer data={data} />
+      </pre>
+    </Section>
   );
 }
 

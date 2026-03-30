@@ -24,17 +24,13 @@ async def get_conversations(
     # Group by system prompt extracted from JSONB
     if group_by == "system_prompt":
         # Extract system prompt from request_body -> messages[0]
-        system_prompt_expr = func.jsonb_extract_path_text(
-            ProxyRequest.request_body, "messages", "0", "content"
-        )
+        system_prompt_expr = func.jsonb_extract_path_text(ProxyRequest.request_body, "messages", "0", "content")
     elif group_by == "client":
         system_prompt_expr = cast("ColumnElement[str | None]", ProxyRequest.client_api_key_hash)
     elif group_by == "model":
         system_prompt_expr = cast("ColumnElement[str | None]", ProxyRequest.model_requested)
     else:
-        system_prompt_expr = func.jsonb_extract_path_text(
-            ProxyRequest.request_body, "messages", "0", "content"
-        )
+        system_prompt_expr = func.jsonb_extract_path_text(ProxyRequest.request_body, "messages", "0", "content")
 
     query = (
         select(
@@ -55,13 +51,15 @@ async def get_conversations(
 
     conversations: list[dict[str, Any]] = []
     for row in rows:
-        conversations.append({
-            "group_key": row.group_key or "unknown",
-            "message_count": row.message_count,
-            "first_message": row.first_message.isoformat() if row.first_message else None,
-            "last_message": row.last_message.isoformat() if row.last_message else None,
-            "models_used": row.models_used or [],
-        })
+        conversations.append(
+            {
+                "group_key": row.group_key or "unknown",
+                "message_count": row.message_count,
+                "first_message": row.first_message.isoformat() if row.first_message else None,
+                "last_message": row.last_message.isoformat() if row.last_message else None,
+                "models_used": row.models_used or [],
+            }
+        )
 
     return conversations
 
@@ -73,22 +71,14 @@ async def get_conversation_messages(
 ) -> list[ProxyRequest]:
     """Get all requests in a conversation."""
     if group_by == "system_prompt":
-        filter_expr = func.jsonb_extract_path_text(
-            ProxyRequest.request_body, "messages", "0", "content"
-        ) == group_key
+        filter_expr = func.jsonb_extract_path_text(ProxyRequest.request_body, "messages", "0", "content") == group_key
     elif group_by == "client":
         filter_expr = ProxyRequest.client_api_key_hash == group_key
     elif group_by == "model":
         filter_expr = ProxyRequest.model_requested == group_key
     else:
-        filter_expr = func.jsonb_extract_path_text(
-            ProxyRequest.request_body, "messages", "0", "content"
-        ) == group_key
+        filter_expr = func.jsonb_extract_path_text(ProxyRequest.request_body, "messages", "0", "content") == group_key
 
-    query = (
-        select(ProxyRequest)
-        .where(filter_expr)
-        .order_by(ProxyRequest.timestamp)
-    )
+    query = select(ProxyRequest).where(filter_expr).order_by(ProxyRequest.timestamp)
     result = await session.execute(query)
     return list(result.scalars().all())

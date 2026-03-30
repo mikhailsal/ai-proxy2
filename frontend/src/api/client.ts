@@ -67,6 +67,72 @@ export function clearSettings(): void {
   localStorage.removeItem(STORAGE_KEY);
 }
 
+class BrowserApiClient implements ApiClient {
+  private readonly baseUrl: string;
+
+  private readonly uiApiKey: string;
+
+  constructor(settings: ApiSettings) {
+    this.baseUrl = settings.baseUrl;
+    this.uiApiKey = settings.uiApiKey;
+  }
+
+  async testConnection(): Promise<void> {
+    await fetchApi<unknown>(this.baseUrl, this.uiApiKey, '/ui/v1/health');
+  }
+
+  async getStats(): Promise<Stats> {
+    return fetchApi<Stats>(this.baseUrl, this.uiApiKey, '/ui/v1/stats');
+  }
+
+  async listRequests(params: {
+    cursor?: string;
+    limit?: number;
+    model?: string;
+    client_hash?: string;
+    since?: string;
+    until?: string;
+  } = {}): Promise<RequestsPage> {
+    return fetchApi<RequestsPage>(this.baseUrl, this.uiApiKey, buildRequestsPath(params));
+  }
+
+  async getRequest(id: string): Promise<RequestDetail> {
+    return fetchApi<RequestDetail>(this.baseUrl, this.uiApiKey, `/ui/v1/requests/${id}`);
+  }
+
+  async searchRequests(q: string, limit = 50): Promise<{ items: RequestSummary[] }> {
+    const qs = new URLSearchParams({ q, limit: String(limit) });
+    return fetchApi<{ items: RequestSummary[] }>(this.baseUrl, this.uiApiKey, `/ui/v1/search?${qs.toString()}`);
+  }
+
+  async getConversations(params: {
+    group_by?: string;
+    limit?: number;
+    offset?: number;
+  } = {}): Promise<ConversationsPage> {
+    return fetchApi<ConversationsPage>(this.baseUrl, this.uiApiKey, buildConversationsPath(params));
+  }
+
+  async getConversationMessages(
+    groupKey: string,
+    groupBy = 'system_prompt',
+  ): Promise<{ items: RequestDetail[] }> {
+    return fetchConversationMessages(this.baseUrl, this.uiApiKey, groupKey, groupBy);
+  }
+
+  async downloadExport(id: string, format: 'json' | 'markdown' = 'json'): Promise<void> {
+    await downloadExportFile(this.baseUrl, this.uiApiKey, id, format);
+  }
+
+  exportUrl(id: string, format: 'json' | 'markdown' = 'json'): string {
+    return `${trimBaseUrl(this.baseUrl)}/ui/v1/export/requests/${id}?format=${format}`;
+  }
+
+  getAuthHeader(): string {
+    return this.uiApiKey ? `Bearer ${this.uiApiKey}` : '';
+  }
+}
+
 function getHeaders(apiKey: string): HeadersInit {
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
@@ -84,7 +150,7 @@ async function fetchApi<T>(
   apiKey: string,
   path: string,
 ): Promise<T> {
-  const url = `${baseUrl.replace(/\/$/, '')}${path}`;
+  const url = `${trimBaseUrl(baseUrl)}${path}`;
   const resp = await fetch(url, { headers: getHeaders(apiKey) });
   if (!resp.ok) {
     const text = await resp.text();
@@ -99,7 +165,7 @@ async function downloadExportFile(
   id: string,
   format: 'json' | 'markdown',
 ): Promise<void> {
-  const url = `${baseUrl.replace(/\/$/, '')}/ui/v1/export/requests/${id}?format=${format}`;
+  const url = `${trimBaseUrl(baseUrl)}/ui/v1/export/requests/${id}?format=${format}`;
   const resp = await fetch(url, { headers: getHeaders(apiKey) });
   if (!resp.ok) {
     const text = await resp.text();
@@ -118,90 +184,61 @@ async function downloadExportFile(
 }
 
 export function createApiClient(settings: ApiSettings): ApiClient {
-  const { baseUrl, uiApiKey } = settings;
-  const api = <T>(path: string) =>
-    fetchApi<T>(baseUrl, uiApiKey, path);
+  return new BrowserApiClient(settings);
+}
 
-  return {
-    async testConnection(): Promise<void> {
-      await fetchApi<unknown>(baseUrl, uiApiKey, '/ui/v1/health');
-    },
+function buildRequestsPath(params: {
+  cursor?: string;
+  limit?: number;
+  model?: string;
+  client_hash?: string;
+  since?: string;
+  until?: string;
+}): string {
+  const query = buildQueryString(params);
+  return `/ui/v1/requests${query ? `?${query}` : ''}`;
+}
 
-    async getStats(): Promise<Stats> {
-      return api<Stats>('/ui/v1/stats');
-    },
+function buildConversationsPath(params: {
+  group_by?: string;
+  limit?: number;
+  offset?: number;
+}): string {
+  const query = buildQueryString(params);
+  return `/ui/v1/conversations${query ? `?${query}` : ''}`;
+}
 
-    async listRequests(params: {
-      cursor?: string;
-      limit?: number;
-      model?: string;
-      client_hash?: string;
-      since?: string;
-      until?: string;
-    } = {}): Promise<RequestsPage> {
-      const qs = new URLSearchParams();
-      if (params.cursor) qs.set('cursor', params.cursor);
-      if (params.limit) qs.set('limit', String(params.limit));
-      if (params.model) qs.set('model', params.model);
-      if (params.client_hash) qs.set('client_hash', params.client_hash);
-      if (params.since) qs.set('since', params.since);
-      if (params.until) qs.set('until', params.until);
-      const query = qs.toString();
-      return api<RequestsPage>(`/ui/v1/requests${query ? `?${query}` : ''}`);
-    },
+function buildQueryString(params: Record<string, string | number | undefined>): string {
+  const qs = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined) {
+      qs.set(key, String(value));
+    }
+  });
+  return qs.toString();
+}
 
-    async getRequest(id: string): Promise<RequestDetail> {
-      return api<RequestDetail>(`/ui/v1/requests/${id}`);
-    },
+async function fetchConversationMessages(
+  baseUrl: string,
+  apiKey: string,
+  groupKey: string,
+  groupBy: string,
+): Promise<{ items: RequestDetail[] }> {
+  const url = `${trimBaseUrl(baseUrl)}/ui/v1/conversations/messages?group_by=${encodeURIComponent(groupBy)}`;
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: getHeaders(apiKey),
+    body: JSON.stringify({ group_key: groupKey }),
+  });
 
-    async searchRequests(q: string, limit = 50): Promise<{ items: RequestSummary[] }> {
-      const qs = new URLSearchParams({ q, limit: String(limit) });
-      return api<{ items: RequestSummary[] }>(`/ui/v1/search?${qs.toString()}`);
-    },
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new ApiError(resp.status, resp.statusText, text);
+  }
 
-    async getConversations(params: {
-      group_by?: string;
-      limit?: number;
-      offset?: number;
-    } = {}): Promise<ConversationsPage> {
-      const qs = new URLSearchParams();
-      if (params.group_by) qs.set('group_by', params.group_by);
-      if (params.limit) qs.set('limit', String(params.limit));
-      if (params.offset) qs.set('offset', String(params.offset));
-      const query = qs.toString();
-      return api<ConversationsPage>(
-        `/ui/v1/conversations${query ? `?${query}` : ''}`,
-      );
-    },
+  return resp.json() as Promise<{ items: RequestDetail[] }>;
+}
 
-    async getConversationMessages(
-      groupKey: string,
-      groupBy = 'system_prompt',
-    ): Promise<{ items: RequestDetail[] }> {
-      const qs = new URLSearchParams({ group_by: groupBy });
-      const url = `${baseUrl.replace(/\/$/, '')}/ui/v1/conversations/messages?${qs.toString()}`;
-      const resp = await fetch(url, {
-        method: 'POST',
-        headers: getHeaders(uiApiKey),
-        body: JSON.stringify({ group_key: groupKey }),
-      });
-      if (!resp.ok) {
-        const text = await resp.text();
-        throw new ApiError(resp.status, resp.statusText, text);
-      }
-      return resp.json() as Promise<{ items: RequestDetail[] }>;
-    },
-
-    async downloadExport(id: string, format: 'json' | 'markdown' = 'json'): Promise<void> {
-      await downloadExportFile(baseUrl, uiApiKey, id, format);
-    },
-
-    exportUrl(id: string, format: 'json' | 'markdown' = 'json'): string {
-      return `${baseUrl.replace(/\/$/, '')}/ui/v1/export/requests/${id}?format=${format}`;
-    },
-
-    getAuthHeader(): string {
-      return uiApiKey ? `Bearer ${uiApiKey}` : '';
-    },
-  };
+function trimBaseUrl(baseUrl: string): string {
+  return baseUrl.replace(/\/$/, '');
 }
