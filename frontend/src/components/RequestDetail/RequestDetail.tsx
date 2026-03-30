@@ -2,27 +2,30 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useApi } from '../../hooks/useApi';
 import { JsonViewer } from '../JsonViewer/JsonViewer';
-import type { RequestSummary } from '../../types';
+import type { RequestDetail as RequestDetailType, RequestSummary } from '../../types';
 
 interface RequestDetailProps {
-  request: RequestSummary;
+  requestId: string;
+  requestSummary?: RequestSummary | null;
   onClose: () => void;
 }
 
-export function RequestDetail({ request, onClose }: RequestDetailProps) {
+export function RequestDetail({ requestId, requestSummary = null, onClose }: RequestDetailProps) {
   const api = useApi();
   const [exportingFormat, setExportingFormat] = useState<'json' | 'markdown' | null>(null);
   const [exportError, setExportError] = useState('');
-  const { data, isLoading } = useQuery({
-    queryKey: ['request', request.id],
-    queryFn: () => api.getRequest(request.id),
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['request', requestId],
+    queryFn: () => api.getRequest(requestId),
   });
+
+  const request: RequestSummary | RequestDetailType | null = data ?? requestSummary;
 
   async function handleExport(format: 'json' | 'markdown') {
     setExportError('');
     setExportingFormat(format);
     try {
-      await api.downloadExport(request.id, format);
+      await api.downloadExport(requestId, format);
     } catch (error) {
       setExportError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -34,12 +37,12 @@ export function RequestDetail({ request, onClose }: RequestDetailProps) {
     <div style={styles.container}>
       <div style={styles.header}>
         <div style={styles.headerLeft}>
-          <span style={styles.id}>#{request.id.slice(0, 8)}…</span>
-          <span style={{ ...styles.badge, background: statusBg(request.response_status_code) }}>
-            {request.response_status_code ?? 'ERR'}
+          <span style={styles.id}>#{requestId.slice(0, 8)}…</span>
+          <span style={{ ...styles.badge, background: statusBg(request?.response_status_code ?? null) }}>
+            {request?.response_status_code ?? '...'}
           </span>
-          <span style={styles.model}>{request.model_requested}</span>
-          {request.model_resolved && request.model_resolved !== request.model_requested && (
+          <span style={styles.model}>{request?.model_requested ?? 'Loading request...'}</span>
+          {request?.model_resolved && request.model_resolved !== request.model_requested && (
             <span style={styles.meta}>→ {request.model_resolved}</span>
           )}
         </div>
@@ -63,15 +66,16 @@ export function RequestDetail({ request, onClose }: RequestDetailProps) {
       </div>
 
       <div style={styles.metaRow}>
-        <MetaBadge label="Latency" value={request.latency_ms != null ? `${Math.round(request.latency_ms)}ms` : '-'} />
-        <MetaBadge label="In" value={String(request.input_tokens ?? '-')} />
-        <MetaBadge label="Out" value={String(request.output_tokens ?? '-')} />
-        <MetaBadge label="Total" value={String(request.total_tokens ?? '-')} />
-        {request.cost != null && <MetaBadge label="Cost" value={`$${request.cost.toFixed(6)}`} />}
-        {request.cache_status && <MetaBadge label="Cache" value={request.cache_status} />}
-        <MetaBadge label="Time" value={new Date(request.timestamp).toLocaleString()} />
+        <MetaBadge label="Latency" value={request?.latency_ms != null ? `${Math.round(request.latency_ms)}ms` : '-'} />
+        <MetaBadge label="In" value={String(request?.input_tokens ?? '-')} />
+        <MetaBadge label="Out" value={String(request?.output_tokens ?? '-')} />
+        <MetaBadge label="Total" value={String(request?.total_tokens ?? '-')} />
+        {request?.cost != null && <MetaBadge label="Cost" value={`$${request.cost.toFixed(6)}`} />}
+        {request?.cache_status && <MetaBadge label="Cache" value={request.cache_status} />}
+        <MetaBadge label="Time" value={request ? new Date(request.timestamp).toLocaleString() : '-'} />
       </div>
       {exportError && <div style={styles.exportError}>{exportError}</div>}
+      {error && <div style={styles.exportError}>{error instanceof Error ? error.message : String(error)}</div>}
 
       {isLoading ? (
         <div style={styles.loading}>Loading detail…</div>

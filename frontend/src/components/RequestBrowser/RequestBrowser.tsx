@@ -1,25 +1,38 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useApi } from '../../hooks/useApi';
 import type { RequestSummary } from '../../types';
 
 interface RequestBrowserProps {
+  modelFilter: string;
+  onModelFilterChange: (value: string) => void;
+  searchQuery: string;
+  onSearchQueryChange: (value: string) => void;
   onSelect: (req: RequestSummary) => void;
   selectedId?: string;
 }
 
-export function RequestBrowser({ onSelect, selectedId }: RequestBrowserProps) {
+export function RequestBrowser({
+  modelFilter,
+  onModelFilterChange,
+  searchQuery,
+  onSearchQueryChange,
+  onSelect,
+  selectedId,
+}: RequestBrowserProps) {
   const api = useApi();
-  const [modelFilter, setModelFilter] = useState('');
   const [searchText, setSearchText] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    setSearchText(searchQuery);
+  }, [searchQuery]);
 
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } =
     useInfiniteQuery({
-      queryKey: ['requests', modelFilter],
+      queryKey: ['requests'],
       queryFn: ({ pageParam }: { pageParam: string | undefined }) =>
-        api.listRequests({ cursor: pageParam, limit: 50, model: modelFilter || undefined }),
+        api.listRequests({ cursor: pageParam, limit: 50 }),
       initialPageParam: undefined as string | undefined,
       getNextPageParam: last => last.next_cursor ?? undefined,
     });
@@ -32,9 +45,18 @@ export function RequestBrowser({ onSelect, selectedId }: RequestBrowserProps) {
     enabled: searchQuery.length > 0,
   });
 
-  const items: RequestSummary[] = searchQuery
+  const baseItems: RequestSummary[] = searchQuery
     ? (searchQuery2.data?.pages.flatMap(p => p.items) ?? [])
     : (data?.pages.flatMap(p => p.items) ?? []);
+
+  const normalizedModelFilter = modelFilter.trim().toLowerCase();
+  const items = normalizedModelFilter
+    ? baseItems.filter(item => {
+        const requestedModel = item.model_requested?.toLowerCase() ?? '';
+        const resolvedModel = item.model_resolved?.toLowerCase() ?? '';
+        return requestedModel.includes(normalizedModelFilter) || resolvedModel.includes(normalizedModelFilter);
+      })
+    : baseItems;
 
   const parentRef = useRef<HTMLDivElement>(null);
   const rowVirtualizer = useVirtualizer({
@@ -54,7 +76,7 @@ export function RequestBrowser({ onSelect, selectedId }: RequestBrowserProps) {
 
   function handleSearch(e: React.FormEvent) {
     e.preventDefault();
-    setSearchQuery(searchText.trim());
+    onSearchQueryChange(searchText.trim());
   }
 
   return (
@@ -70,7 +92,14 @@ export function RequestBrowser({ onSelect, selectedId }: RequestBrowserProps) {
           />
           <button style={styles.searchBtn} type="submit">Search</button>
           {searchQuery && (
-            <button style={styles.clearBtn} type="button" onClick={() => { setSearchText(''); setSearchQuery(''); }}>
+            <button
+              style={styles.clearBtn}
+              type="button"
+              onClick={() => {
+                setSearchText('');
+                onSearchQueryChange('');
+              }}
+            >
               ✕
             </button>
           )}
@@ -80,7 +109,7 @@ export function RequestBrowser({ onSelect, selectedId }: RequestBrowserProps) {
           type="text"
           placeholder="Filter by model…"
           value={modelFilter}
-          onChange={e => setModelFilter(e.target.value)}
+          onChange={e => onModelFilterChange(e.target.value)}
         />
       </div>
 

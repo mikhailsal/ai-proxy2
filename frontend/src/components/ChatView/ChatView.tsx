@@ -3,10 +3,22 @@ import { useQuery } from '@tanstack/react-query';
 import { useApi } from '../../hooks/useApi';
 import type { RequestDetail } from '../../types';
 
-export function ChatView() {
+type ChatGroupBy = 'system_prompt' | 'client' | 'model';
+
+interface ChatViewProps {
+  groupBy: ChatGroupBy;
+  selectedGroup: string | null;
+  onGroupByChange: (groupBy: ChatGroupBy) => void;
+  onSelectGroup: (groupKey: string) => void;
+}
+
+export function ChatView({
+  groupBy,
+  selectedGroup,
+  onGroupByChange,
+  onSelectGroup,
+}: ChatViewProps) {
   const api = useApi();
-  const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
-  const [groupBy, setGroupBy] = useState('system_prompt');
 
   const { data: conversations, isLoading } = useQuery({
     queryKey: ['conversations', groupBy],
@@ -27,7 +39,7 @@ export function ChatView() {
           <select
             style={styles.select}
             value={groupBy}
-            onChange={e => { setGroupBy(e.target.value); setSelectedGroup(null); }}
+            onChange={e => onGroupByChange(e.target.value as ChatGroupBy)}
           >
             <option value="system_prompt">By System Prompt</option>
             <option value="client">By Client</option>
@@ -46,7 +58,7 @@ export function ChatView() {
                   background: selectedGroup === conv.group_key ? '#21262d' : 'transparent',
                   borderLeft: selectedGroup === conv.group_key ? '2px solid #58a6ff' : '2px solid transparent',
                 }}
-                onClick={() => setSelectedGroup(conv.group_key)}
+                onClick={() => onSelectGroup(conv.group_key)}
               >
                 <div style={styles.convPreview}>
                   {(conv.group_key ?? 'Unknown').slice(0, 60)}

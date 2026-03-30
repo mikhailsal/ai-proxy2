@@ -10,6 +10,27 @@ import { ChatView } from './components/ChatView/ChatView';
 import { StatsBar } from './components/common/StatsBar';
 import type { RequestSummary } from './types';
 
+type ActiveTab = 'requests' | 'chat';
+type ChatGroupBy = 'system_prompt' | 'client' | 'model';
+
+interface NavigationState {
+  activeTab: ActiveTab;
+  requestId: string | null;
+  requestSearch: string;
+  requestModelFilter: string;
+  chatGroupBy: ChatGroupBy;
+  selectedChatGroup: string | null;
+}
+
+const DEFAULT_NAVIGATION: NavigationState = {
+  activeTab: 'requests',
+  requestId: null,
+  requestSearch: '',
+  requestModelFilter: '',
+  chatGroupBy: 'system_prompt',
+  selectedChatGroup: null,
+};
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -20,10 +41,56 @@ const queryClient = new QueryClient({
   },
 });
 
+function parseChatGroupBy(value: string | null): ChatGroupBy {
+  if (value === 'client' || value === 'model' || value === 'system_prompt') {
+    return value;
+  }
+  return DEFAULT_NAVIGATION.chatGroupBy;
+}
+
+function readNavigationFromLocation(): NavigationState {
+  const params = new URLSearchParams(window.location.search);
+  return {
+    activeTab: params.get('tab') === 'chat' ? 'chat' : 'requests',
+    requestId: params.get('request'),
+    requestSearch: params.get('q') ?? '',
+    requestModelFilter: params.get('model') ?? '',
+    chatGroupBy: parseChatGroupBy(params.get('groupBy')),
+    selectedChatGroup: params.get('group'),
+  };
+}
+
+function buildNavigationUrl(state: NavigationState): string {
+  const params = new URLSearchParams();
+
+  if (state.activeTab === 'chat') {
+    params.set('tab', 'chat');
+    if (state.chatGroupBy !== DEFAULT_NAVIGATION.chatGroupBy) {
+      params.set('groupBy', state.chatGroupBy);
+    }
+    if (state.selectedChatGroup) {
+      params.set('group', state.selectedChatGroup);
+    }
+  } else {
+    if (state.requestSearch) {
+      params.set('q', state.requestSearch);
+    }
+    if (state.requestModelFilter) {
+      params.set('model', state.requestModelFilter);
+    }
+    if (state.requestId) {
+      params.set('request', state.requestId);
+    }
+  }
+
+  const search = params.toString();
+  return `${window.location.pathname}${search ? `?${search}` : ''}${window.location.hash}`;
+}
+
 export default function App() {
   const [client, setClient] = useState<ApiClient | null>(null);
-  const [activeTab, setActiveTab] = useState<'requests' | 'chat'>('requests');
-  const [selectedRequest, setSelectedRequest] = useState<RequestSummary | null>(null);
+  const [navigation, setNavigation] = useState<NavigationState>(() => readNavigationFromLocation());
+  const [selectedRequestSummary, setSelectedRequestSummary] = useState<RequestSummary | null>(null);
 
   useEffect(() => {
     const saved = loadSettings();
@@ -32,12 +99,48 @@ export default function App() {
     }
   }, []);
 
+  useEffect(() => {
+    function handlePopState() {
+      setNavigation(readNavigationFromLocation());
+      setSelectedRequestSummary(null);
+    }
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  function updateNavigation(
+    updater: NavigationState | ((current: NavigationState) => NavigationState),
+    mode: 'push' | 'replace' = 'push',
+  ) {
+    setNavigation(current => {
+      const next = typeof updater === 'function' ? updater(current) : updater;
+      const nextUrl = buildNavigationUrl(next);
+      const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+
+      if (nextUrl !== currentUrl) {
+        if (mode === 'replace') {
+          window.history.replaceState(null, '', nextUrl);
+        } else {
+          window.history.pushState(null, '', nextUrl);
+        }
+      }
+
+      return next;
+    });
+  }
+
   function handleDisconnect() {
     clearSettings();
     setClient(null);
-    setSelectedRequest(null);
+    setSelectedRequestSummary(null);
     queryClient.clear();
   }
+
+  const activeRequestSummary =
+    navigation.requestId && selectedRequestSummary?.id === navigation.requestId
+      ? selectedRequestSummary
+      : null;
 
   if (!client) {
     return <AuthPage onConnect={setClient} />;
@@ -50,14 +153,20 @@ export default function App() {
           <div style={styles.nav}>
             <span style={styles.navTitle}>AI Proxy v2</span>
             <button
-              style={{ ...styles.navTab, ...(activeTab === 'requests' ? styles.navTabActive : {}) }}
-              onClick={() => setActiveTab('requests')}
+              style={{
+                ...styles.navTab,
+                ...(navigation.activeTab === 'requests' ? styles.navTabActive : {}),
+              }}
+              onClick={() => updateNavigation(current => ({ ...current, activeTab: 'requests' }))}
             >
               Requests
             </button>
             <button
-              style={{ ...styles.navTab, ...(activeTab === 'chat' ? styles.navTabActive : {}) }}
-              onClick={() => setActiveTab('chat')}
+              style={{
+                ...styles.navTab,
+                ...(navigation.activeTab === 'chat' ? styles.navTabActive : {}),
+              }}
+              onClick={() => updateNavigation(current => ({ ...current, activeTab: 'chat' }))}
             >
               Chat
             </button>
@@ -70,27 +179,78 @@ export default function App() {
           <StatsBar />
 
           <div style={styles.main}>
-            {activeTab === 'requests' && (
+            {navigation.activeTab === 'requests' && (
               <>
-                <div style={{ ...styles.pane, flex: selectedRequest ? '0 0 50%' : '1' }}>
+                <div style={{ ...styles.pane, flex: navigation.requestId ? '0 0 50%' : '1' }}>
                   <RequestBrowser
-                    onSelect={r => setSelectedRequest(r)}
-                    selectedId={selectedRequest?.id}
+                    modelFilter={navigation.requestModelFilter}
+                    onModelFilterChange={modelFilter => {
+                      updateNavigation(
+                        current => ({
+                          ...current,
+                          activeTab: 'requests',
+                          requestModelFilter: modelFilter,
+                        }),
+                        'replace',
+                      );
+                    }}
+                    searchQuery={navigation.requestSearch}
+                    onSearchQueryChange={searchQuery => {
+                      updateNavigation(current => ({
+                        ...current,
+                        activeTab: 'requests',
+                        requestSearch: searchQuery,
+                      }));
+                    }}
+                    onSelect={request => {
+                      setSelectedRequestSummary(request);
+                      updateNavigation(current => ({
+                        ...current,
+                        activeTab: 'requests',
+                        requestId: request.id,
+                      }));
+                    }}
+                    selectedId={navigation.requestId ?? undefined}
                   />
                 </div>
-                {selectedRequest && (
+                {navigation.requestId && (
                   <div style={{ ...styles.pane, flex: '1', borderLeft: '1px solid #21262d' }}>
                     <RequestDetail
-                      request={selectedRequest}
-                      onClose={() => setSelectedRequest(null)}
+                      requestId={navigation.requestId}
+                      requestSummary={activeRequestSummary}
+                      onClose={() => {
+                        setSelectedRequestSummary(null);
+                        updateNavigation(current => ({
+                          ...current,
+                          requestId: null,
+                        }));
+                      }}
                     />
                   </div>
                 )}
               </>
             )}
-            {activeTab === 'chat' && (
+            {navigation.activeTab === 'chat' && (
               <div style={{ flex: 1, overflow: 'hidden' }}>
-                <ChatView />
+                <ChatView
+                  groupBy={navigation.chatGroupBy}
+                  selectedGroup={navigation.selectedChatGroup}
+                  onGroupByChange={groupBy => {
+                    updateNavigation(current => ({
+                      ...current,
+                      activeTab: 'chat',
+                      chatGroupBy: groupBy,
+                      selectedChatGroup: null,
+                    }));
+                  }}
+                  onSelectGroup={groupKey => {
+                    updateNavigation(current => ({
+                      ...current,
+                      activeTab: 'chat',
+                      selectedChatGroup: groupKey,
+                    }));
+                  }}
+                />
               </div>
             )}
           </div>
