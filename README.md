@@ -17,22 +17,43 @@ An OpenAI-compatible API proxy with logging, model routing, and a web UI for rev
 cp .env.example .env
 ```
 
-Edit `.env`:
+Edit `.env` with infrastructure secrets:
 
 ```env
 POSTGRES_PASSWORD=your-secure-password
 
-# Provider API keys
+# Default provider API key (used when no key_mapping overrides it)
 OPENROUTER_API_KEY=sk-or-...
-
-# Comma-separated keys clients use to authenticate to this proxy
-API_KEYS=your-proxy-key-1,your-proxy-key-2
-
-# Key for the web UI
-UI_API_KEY=your-ui-key
 ```
 
-### 2. Configure routing
+### 2. Configure secrets
+
+```bash
+cp config.secrets.example.yml config.secrets.yml
+```
+
+Edit `config.secrets.yml` with your application secrets:
+
+```yaml
+# Proxy access keys — clients authenticate with these
+api_keys:
+  - "your-proxy-key-1"
+  - "your-proxy-key-2"
+
+# Web UI dashboard key
+ui_api_key: "your-ui-key"
+
+# Per-client provider key routing (optional)
+# Client keys are stored in plaintext — auto-hashed at load time
+key_mappings:
+  "your-proxy-key-1":
+    provider_keys:
+      openrouter: "sk-or-v1-client-specific-key"
+```
+
+This file is gitignored and must never be committed.
+
+### 3. Configure routing
 
 Edit `config.yml` to set up providers and model mappings:
 
@@ -43,16 +64,33 @@ providers:
     endpoint: https://openrouter.ai/api/v1
 
 model_mappings:
-  # Catch-all: route everything to GPT-4o-mini via OpenRouter
-  "*": "openrouter:openai/gpt-4o-mini"
-  # Or map specific models:
-  # "gpt-4o": "openrouter:openai/gpt-4o"
-  # "claude-*": "openrouter:anthropic/claude-3.5-sonnet"
+  "gpt-4o": "openrouter:openai/gpt-4o"
+  "claude-*": "openrouter:anthropic/claude-3.5-sonnet"
+  "*": "openrouter:openai/gpt-4o-mini"  # fallback
 ```
 
 Model names support `fnmatch` glob patterns. The first matching rule wins.
 
-### 3. Run migrations
+### 4. Bypass mode (optional)
+
+When bypass is enabled in `config.yml`, clients who are **not** in the `api_keys` list can still use the proxy by sending their own provider API key directly:
+
+```yaml
+bypass:
+  enabled: true   # accept unknown keys and forward them to the provider
+  # enabled: false  # reject all unknown keys (only api_keys accepted)
+```
+
+**Key priority** (configured keys always win):
+
+| Client key | Bypass | Result |
+|---|---|---|
+| Known key + has key_mapping | any | Mapped provider key is used |
+| Known key, no mapping | any | Adapter default key (from env) |
+| Unknown key | enabled | Client's raw key forwarded to provider |
+| Unknown key | disabled | Request rejected (401) |
+
+### 5. Run migrations
 
 Compose now runs Alembic automatically before the backend starts. If you want to run it manually:
 
@@ -62,7 +100,7 @@ make migrate
 
 Use `make migrate-rollback` to verify the last revision can be reversed locally.
 
-### 4. Install quality hooks
+### 6. Install quality hooks
 
 Set the repository-local Git hooks path so commits run the tracked pre-commit checks:
 
@@ -78,7 +116,7 @@ The pre-commit workflow enforces:
 - backend coverage of at least 95%
 - frontend line and statement coverage of at least 95%
 
-### 5. Run
+### 7. Run
 
 **Development** (backend on :8000, Dockerized frontend on :3000, optional Vite frontend for local UI edits):
 
@@ -134,18 +172,24 @@ Streaming (`"stream": true`) is supported.
 
 | Endpoint | Auth | Description |
 |---|---|---|
-| `POST /v1/chat/completions` | `API_KEYS` | Proxy chat completions |
-| `GET /v1/models` | `API_KEYS` | List configured models |
-| `GET /ui/v1/health` | `UI_API_KEY` | Authenticated UI connectivity check |
-| `GET /ui/v1/requests` | `UI_API_KEY` | Request log browser |
-| `GET /ui/v1/requests/{request_id}` | `UI_API_KEY` | Request detail |
-| `GET /ui/v1/search` | `UI_API_KEY` | Full-text request search |
-| `GET /ui/v1/stats` | `UI_API_KEY` | UI summary metrics |
-| `GET /ui/v1/conversations` | `UI_API_KEY` | Grouped conversations |
-| `GET /ui/v1/conversations/{group_key}/messages` | `UI_API_KEY` | Conversation messages |
-| `GET /ui/v1/export/requests/{request_id}` | `UI_API_KEY` | Export a request as JSON or Markdown |
+| `POST /v1/chat/completions` | `api_keys` / bypass | Proxy chat completions |
+| `GET /v1/models` | `api_keys` / bypass | List configured models |
+| `POST /admin/reload-config` | none | Hot-reload config and secrets |
+| `GET /ui/v1/health` | `ui_api_key` | Authenticated UI connectivity check |
+| `GET /ui/v1/requests` | `ui_api_key` | Request log browser |
+| `GET /ui/v1/requests/{request_id}` | `ui_api_key` | Request detail |
+| `GET /ui/v1/search` | `ui_api_key` | Full-text request search |
+| `GET /ui/v1/stats` | `ui_api_key` | UI summary metrics |
+| `GET /ui/v1/conversations` | `ui_api_key` | Grouped conversations |
+| `GET /ui/v1/conversations/{group_key}/messages` | `ui_api_key` | Conversation messages |
+| `GET /ui/v1/export/requests/{request_id}` | `ui_api_key` | Export a request as JSON or Markdown |
 
 ## Configuration reference
+
+Configuration is split into two files:
+
+- **`config.yml`** (committed) — public routing and behavior settings
+- **`config.secrets.yml`** (gitignored) — all API keys and secrets
 
 ### `config.yml`
 
@@ -153,20 +197,32 @@ Streaming (`"stream": true`) is supported.
 |---|---|
 | `providers` | Named provider definitions (type, endpoint, headers) |
 | `model_mappings` | `client-model: provider:real-model` mappings (glob patterns ok) |
+| `bypass.enabled` | Accept unknown keys and forward them to the provider (default: false) |
 | `access_rules` | Per-key model allow/deny lists (optional) |
 | `modification_rules` | Rewrite request fields before forwarding (optional) |
 | `logging.log_retention_days` | Auto-delete logs older than N days (default: 30) |
+| `grouping.default_field` | Field used for conversation grouping (default: `system_prompt`) |
 
-### Environment variables
+### `config.secrets.yml`
+
+| Field | Description |
+|---|---|
+| `api_keys` | List of proxy access keys that clients use to authenticate |
+| `ui_api_key` | Key required to access the web UI endpoints |
+| `key_mappings` | Per-client mapping of proxy key to upstream provider keys |
+
+Client keys in `key_mappings` are written in plaintext — the proxy hashes them automatically at load time (SHA-256). See `config.secrets.example.yml` for the full template.
+
+### Environment variables (`.env`)
 
 | Variable | Required | Description |
 |---|---|---|
 | `POSTGRES_PASSWORD` | Yes | Database password |
-| `API_KEYS` | Yes | Comma-separated proxy auth keys |
-| `UI_API_KEY` | Yes | Web UI auth key |
-| `OPENROUTER_API_KEY` | If using OpenRouter | Provider API key |
+| `OPENROUTER_API_KEY` | If using OpenRouter | Default provider API key |
 | `DOMAIN` | Production | Your domain name |
 | `ACME_EMAIL` | Production | Email for Let's Encrypt |
+
+Legacy support: `API_KEYS` and `UI_API_KEY` env vars still work as fallback if `config.secrets.yml` is absent.
 
 ## Quality checks
 

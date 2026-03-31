@@ -65,14 +65,23 @@ model_mappings:
   # ── Fallback: unmapped models → free route ──
   "*": "openrouter:openrouter/free"
 
-# Bypass mode (optional)
-# When enabled, the client's own API key is forwarded to the upstream provider.
-# No preconfigured API_KEYS are required — any non-empty key is accepted.
+# ── Bypass mode ─────────────────────────────────────────────────────
+# When enabled, clients who are NOT in the api_keys list can still use
+# the proxy by sending their own provider API key directly.
+# Their key is forwarded as-is to the upstream provider.
+#
+# Configured (known) keys ALWAYS take priority — if a client sends a
+# key that matches api_keys, the proxy uses key_mappings to resolve
+# the upstream key, regardless of whether bypass is on or off.
+#
+# Set to false to reject all unknown keys (only api_keys are accepted).
 bypass:
   enabled: true
 
+# ── Secrets ─────────────────────────────────────────────────────────
 # Key mappings, API keys, and UI key are stored in config.secrets.yml
 # (see config.secrets.example.yml for the template).
+# That file is gitignored and MUST NOT be committed.
 
 # Access rules (optional)
 access_rules: {}
