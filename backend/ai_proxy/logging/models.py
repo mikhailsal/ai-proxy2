@@ -16,10 +16,12 @@ class LogEntry(BaseModel):
     method: str = "POST"
     path: str = "/v1/chat/completions"
     request_headers: dict[str, Any] | None = None
+    client_request_headers: dict[str, Any] | None = None
     request_body: dict[str, Any] | list[Any] | None = None
     client_request_body: dict[str, Any] | list[Any] | None = None
     response_status_code: int | None = None
     response_headers: dict[str, Any] | None = None
+    client_response_headers: dict[str, Any] | None = None
     response_body: dict[str, Any] | list[Any] | None = None
     client_response_body: dict[str, Any] | list[Any] | None = None
     stream_chunks: list[Any] | None = None
@@ -43,6 +45,7 @@ class LogEntry(BaseModel):
         entry_id: uuid.UUID,
         request: Request,
         client_api_key_hash: str,
+        request_headers: dict[str, Any] | None = None,
         request_body: dict[str, Any] | list[Any] | None,
         model_requested: str,
         model_resolved: str,
@@ -51,6 +54,7 @@ class LogEntry(BaseModel):
         response_status_code: int,
         client_request_body: dict[str, Any] | list[Any] | None = None,
         response_headers: dict[str, Any] | None = None,
+        client_response_headers: dict[str, Any] | None = None,
         response_body: dict[str, Any] | list[Any] | None = None,
         client_response_body: dict[str, Any] | list[Any] | None = None,
         stream_chunks: list[Any] | None = None,
@@ -66,11 +70,13 @@ class LogEntry(BaseModel):
             client_api_key_hash=client_api_key_hash,
             method=request.method,
             path=request.url.path,
-            request_headers=dict(request.headers),
+            request_headers=request_headers,
+            client_request_headers=dict(request.headers),
             request_body=request_body,
             client_request_body=client_request_body,
             response_status_code=response_status_code,
             response_headers=response_headers,
+            client_response_headers=client_response_headers,
             response_body=response_body,
             client_response_body=client_response_body,
             stream_chunks=stream_chunks,

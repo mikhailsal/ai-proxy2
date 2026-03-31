@@ -122,6 +122,20 @@ function RequestDetailMetaRow({
   );
 }
 
+function hasDiff(a: unknown, b: unknown): boolean {
+  return a != null && b != null && JSON.stringify(a) !== JSON.stringify(b);
+}
+
+function DiffOrPlainSection({ client, provider, title, diffTitle, collapsed = false }: {
+  client: unknown; provider: unknown; title: string; diffTitle: string; collapsed?: boolean;
+}) {
+  if (hasDiff(client, provider)) {
+    return <DiffSection left={client} right={provider} title={diffTitle} />;
+  }
+  const data = provider ?? client;
+  return data ? <JsonSection data={data} title={title} collapsed={collapsed} /> : null;
+}
+
 function RequestDetailBody({
   data,
   isLoading,
@@ -129,43 +143,30 @@ function RequestDetailBody({
   data: RequestDetailType | undefined;
   isLoading: boolean;
 }) {
-  if (isLoading) {
-    return <div style={styles.loading}>Loading detail…</div>;
-  }
-
-  if (!data) {
-    return null;
-  }
-
-  const hasRequestDiff = data.client_request_body != null
-    && JSON.stringify(data.client_request_body) !== JSON.stringify(data.request_body);
-  const hasResponseDiff = data.client_response_body != null
-    && JSON.stringify(data.client_response_body) !== JSON.stringify(data.response_body);
+  if (isLoading) return <div style={styles.loading}>Loading detail…</div>;
+  if (!data) return null;
 
   return (
     <div style={styles.sections}>
-      {hasRequestDiff ? (
-        <DiffSection
-          left={data.client_request_body}
-          right={data.request_body}
-          title="Request Body (Client → Provider)"
-        />
-      ) : (
-        <JsonSection data={data.request_body} title="Request Body" />
-      )}
-      {hasResponseDiff ? (
-        <DiffSection
-          left={data.response_body}
-          right={data.client_response_body}
-          title="Response Body (Provider → Client)"
-        />
-      ) : (
-        <JsonSection data={data.response_body} title="Response Body" />
-      )}
+      <DiffOrPlainSection
+        client={data.client_request_body} provider={data.request_body}
+        title="Request Body" diffTitle="Request Body (Client → Provider)"
+      />
+      <DiffOrPlainSection
+        client={data.response_body} provider={data.client_response_body}
+        title="Response Body" diffTitle="Response Body (Provider → Client)"
+      />
       {data.stream_chunks && data.stream_chunks.length > 0 ? (
         <JsonSection data={data.stream_chunks} title={`Stream Chunks (${data.stream_chunks.length})`} collapsed />
       ) : null}
-      {data.request_headers ? <JsonSection data={data.request_headers} title="Request Headers" collapsed /> : null}
+      <DiffOrPlainSection
+        client={data.response_headers} provider={data.client_response_headers}
+        title="Response Headers" diffTitle="Response Headers (Provider → Client)" collapsed
+      />
+      <DiffOrPlainSection
+        client={data.client_request_headers} provider={data.request_headers}
+        title="Request Headers" diffTitle="Request Headers (Client → Provider)" collapsed
+      />
       {data.error_message ? (
         <Section title="Error">
           <pre style={{ ...styles.pre, color: '#f85149' }}>{data.error_message}</pre>

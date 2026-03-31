@@ -222,11 +222,12 @@ async def _handle_non_streaming(
     latency = (time.monotonic() - start_time) * 1000
     response_body = upstream_response.parsed_body()
     input_tokens, output_tokens, total_tokens = _extract_usage(response_body)
-
+    client_response_headers = _proxy_response_headers(upstream_response.headers)
     await _enqueue_non_streaming_log(
         request=request,
         request_id=request_id,
         key_hash=key_hash,
+        forward_headers=forward_headers,
         forward_body=forward_body,
         route=route,
         model_requested=model_requested,
@@ -237,12 +238,13 @@ async def _handle_non_streaming(
         output_tokens=output_tokens,
         total_tokens=total_tokens,
         client_request_body=client_request_body,
+        client_response_headers=client_response_headers,
     )
 
     return Response(
         content=upstream_response.body,
         status_code=upstream_response.status_code,
-        headers=_proxy_response_headers(upstream_response.headers),
+        headers=client_response_headers,
     )
 
 
@@ -283,6 +285,7 @@ async def _handle_streaming(
             request=request,
             request_id=request_id,
             key_hash=key_hash,
+            forward_headers=forward_headers,
             forward_body=forward_body,
             route=route,
             model_requested=model_requested,
@@ -292,11 +295,11 @@ async def _handle_streaming(
             proxy_response_headers=_proxy_response_headers,
             client_request_body=client_request_body,
         )
-
     return build_streaming_response(
         request=request,
         request_id=request_id,
         key_hash=key_hash,
+        forward_headers=forward_headers,
         forward_body=forward_body,
         route=route,
         model_requested=model_requested,
@@ -371,6 +374,7 @@ async def _enqueue_non_streaming_log(
     request: Request,
     request_id: uuid.UUID,
     key_hash: str,
+    forward_headers: dict[str, str],
     forward_body: JsonObject,
     route: RouteResult,
     model_requested: str,
@@ -381,12 +385,14 @@ async def _enqueue_non_streaming_log(
     output_tokens: int | None,
     total_tokens: int | None,
     client_request_body: JsonObject | None = None,
+    client_response_headers: dict[str, str] | None = None,
 ) -> None:
     await enqueue_log(
         LogEntry.from_proxy_context(
             entry_id=request_id,
             request=request,
             client_api_key_hash=key_hash,
+            request_headers=forward_headers,
             request_body=forward_body,
             client_request_body=client_request_body,
             model_requested=model_requested,
@@ -395,6 +401,7 @@ async def _enqueue_non_streaming_log(
             latency_ms=latency,
             response_status_code=upstream_response.status_code,
             response_headers=upstream_response.headers,
+            client_response_headers=client_response_headers,
             response_body=response_body,
             input_tokens=input_tokens,
             output_tokens=output_tokens,

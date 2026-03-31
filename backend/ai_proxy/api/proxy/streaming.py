@@ -36,6 +36,7 @@ async def stream_error_response(
     request: Request,
     request_id: uuid.UUID,
     key_hash: str,
+    forward_headers: dict[str, str],
     forward_body: JsonObject,
     route: RouteResult,
     model_requested: str,
@@ -47,11 +48,13 @@ async def stream_error_response(
 ) -> Response:
     latency = (time.monotonic() - start_time) * 1000
     response_body = upstream_stream.parsed_error_body()
+    client_resp_headers = proxy_response_headers(upstream_stream.headers)
     await enqueue_log(
         LogEntry.from_proxy_context(
             entry_id=request_id,
             request=request,
             client_api_key_hash=key_hash,
+            request_headers=forward_headers,
             request_body=forward_body,
             client_request_body=client_request_body,
             model_requested=model_requested,
@@ -60,6 +63,7 @@ async def stream_error_response(
             latency_ms=latency,
             response_status_code=upstream_stream.status_code,
             response_headers=upstream_stream.headers,
+            client_response_headers=client_resp_headers,
             response_body=response_body,
             error_message=extract_error_message(response_body),
         )
@@ -67,7 +71,7 @@ async def stream_error_response(
     return Response(
         content=upstream_stream.error_body,
         status_code=upstream_stream.status_code,
-        headers=proxy_response_headers(upstream_stream.headers),
+        headers=client_resp_headers,
     )
 
 
@@ -76,6 +80,7 @@ def build_streaming_response(
     request: Request,
     request_id: uuid.UUID,
     key_hash: str,
+    forward_headers: dict[str, str],
     forward_body: JsonObject,
     route: RouteResult,
     model_requested: str,
@@ -89,6 +94,10 @@ def build_streaming_response(
         response_status_code=upstream_stream.status_code,
     )
 
+    streaming_headers = proxy_response_headers(state.response_headers)
+    streaming_headers.setdefault("Cache-Control", "no-cache")
+    streaming_headers.setdefault("X-Accel-Buffering", "no")
+
     async def stream_generator() -> AsyncGenerator[bytes, None]:
         async for chunk_bytes in relay_stream_chunks(upstream_stream, state):
             yield chunk_bytes
@@ -96,17 +105,16 @@ def build_streaming_response(
             request=request,
             request_id=request_id,
             key_hash=key_hash,
+            forward_headers=forward_headers,
             forward_body=forward_body,
             route=route,
             model_requested=model_requested,
             start_time=start_time,
             state=state,
             client_request_body=client_request_body,
+            client_response_headers=streaming_headers,
         )
 
-    streaming_headers = proxy_response_headers(state.response_headers)
-    streaming_headers.setdefault("Cache-Control", "no-cache")
-    streaming_headers.setdefault("X-Accel-Buffering", "no")
     return StreamingResponse(
         stream_generator(),
         status_code=upstream_stream.status_code,
@@ -171,12 +179,14 @@ async def enqueue_stream_log(
     request: Request,
     request_id: uuid.UUID,
     key_hash: str,
+    forward_headers: dict[str, str],
     forward_body: JsonObject,
     route: RouteResult,
     model_requested: str,
     start_time: float,
     state: StreamState,
     client_request_body: JsonObject | None = None,
+    client_response_headers: dict[str, str] | None = None,
 ) -> None:
     latency = (time.monotonic() - start_time) * 1000
     await enqueue_log(
@@ -184,6 +194,7 @@ async def enqueue_stream_log(
             entry_id=request_id,
             request=request,
             client_api_key_hash=key_hash,
+            request_headers=forward_headers,
             request_body=forward_body,
             client_request_body=client_request_body,
             model_requested=model_requested,
@@ -192,6 +203,7 @@ async def enqueue_stream_log(
             latency_ms=latency,
             response_status_code=state.response_status_code,
             response_headers=state.response_headers,
+            client_response_headers=client_response_headers,
             response_body=assembled_stream_response(state),
             stream_chunks=state.chunks_collected if state.chunks_collected else None,
             input_tokens=state.usage_data.get("prompt_tokens"),

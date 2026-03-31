@@ -256,6 +256,45 @@ describe('RequestDetail', () => {
     expect(screen.queryByText('→')).not.toBeInTheDocument();
   });
 
+  it('shows header diff view when headers differ between client and provider', async () => {
+    const detail = makeRequestDetail({
+      client_request_headers: { authorization: 'Bearer sk-***', 'content-type': 'application/json' },
+      request_headers: { authorization: 'Bearer sk-***', 'content-type': 'application/json', 'x-custom-header': 'added-by-proxy' },
+      response_headers: { 'content-type': 'application/json', 'x-ratelimit-remaining': '99', 'transfer-encoding': 'chunked' },
+      client_response_headers: { 'content-type': 'application/json', 'x-ratelimit-remaining': '99' },
+    });
+    const api = {
+      downloadExport: vi.fn().mockResolvedValue(undefined),
+      getRequest: vi.fn().mockResolvedValue(detail),
+    };
+
+    renderWithApi(
+      <RequestDetail onClose={vi.fn()} requestId="req-hdiff" requestSummary={makeRequestSummary({})} />,
+      api,
+    );
+
+    await waitFor(() => expect(screen.getByText('Request Headers (Client → Provider)')).toBeInTheDocument());
+    expect(screen.getByText('Response Headers (Provider → Client)')).toBeInTheDocument();
+  });
+
+  it('shows response headers as plain section when no diff exists', async () => {
+    const detail = makeRequestDetail({
+      response_headers: { 'content-type': 'application/json' },
+      client_response_headers: { 'content-type': 'application/json' },
+    });
+    const api = {
+      downloadExport: vi.fn().mockResolvedValue(undefined),
+      getRequest: vi.fn().mockResolvedValue(detail),
+    };
+
+    renderWithApi(
+      <RequestDetail onClose={vi.fn()} requestId="req-rh" requestSummary={makeRequestSummary({})} />,
+      api,
+    );
+
+    await waitFor(() => expect(screen.getByText('Response Headers')).toBeInTheDocument());
+  });
+
   it('shows query and export errors while keeping summary metadata', async () => {
     const api = {
       downloadExport: vi.fn().mockRejectedValue(new Error('export failed')),
@@ -380,6 +419,7 @@ function makeRequestDetail(overrides?: Partial<RequestDetailType>): RequestDetai
   return {
     ...makeRequestSummary({ error_message: 'backend error' }),
     request_headers: { authorization: 'Bearer redacted' },
+    client_request_headers: null,
     request_body: {
       tools: [{ type: 'function', function: { name: 'lookup_weather' } }],
       messages: [
@@ -389,6 +429,7 @@ function makeRequestDetail(overrides?: Partial<RequestDetailType>): RequestDetai
     },
     client_request_body: null,
     response_headers: { 'content-type': 'application/json' },
+    client_response_headers: null,
     response_body: { choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: 'reply' } }] },
     client_response_body: null,
     stream_chunks: [{ delta: 'hi' }],
@@ -398,85 +439,25 @@ function makeRequestDetail(overrides?: Partial<RequestDetailType>): RequestDetai
   };
 }
 
+function msg(overrides: Partial<ConversationMessage> & { id: string; role: string; content: string }): ConversationMessage {
+  return {
+    origin: 'request', raw_message: { role: overrides.role, content: overrides.content },
+    tool_names: [], meta_tags: {}, source_request_id: 'req-1',
+    source_request_timestamp: '2024-01-01T00:00:00Z', source_message_index: 0,
+    last_seen_at: '2024-01-02T00:00:00Z', repeat_count: 2,
+    model: 'gpt-4o-mini', latency_ms: 42, total_tokens: 3, ...overrides,
+  };
+}
+
 function makeConversationMessages(): ConversationMessage[] {
   return [
-    {
-      id: 'msg-3',
-      origin: 'response',
-      role: 'assistant',
-      content: 'reply',
-      raw_message: { role: 'assistant', content: 'reply' },
-      tool_names: [],
-      meta_tags: {},
-      source_request_id: 'req-1',
-      source_request_timestamp: '2024-01-01T00:00:00Z',
-      source_message_index: 2,
-      last_seen_at: '2024-01-01T00:00:00Z',
-      repeat_count: 1,
-      model: 'gpt-4o-mini',
-      latency_ms: 42,
-      total_tokens: 3,
-    },
-    {
-      id: 'msg-2b',
-      origin: 'response',
-      role: 'assistant',
-      content: 'Tool call: lookup_weather',
-      raw_message: {
-        role: 'assistant',
-        content: '',
-        tool_calls: [
-          {
-            id: 'call_weather_1',
-            type: 'function',
-            function: { name: 'lookup_weather', arguments: '{"city":"Berlin"}' },
-          },
-        ],
-      },
-      tool_names: ['lookup_weather'],
-      meta_tags: {},
-      source_request_id: 'req-1',
-      source_request_timestamp: '2024-01-01T00:00:00Z',
-      source_message_index: 2,
-      last_seen_at: '2024-01-02T00:00:00Z',
-      repeat_count: 2,
-      model: 'gpt-4o-mini',
-      latency_ms: 42,
-      total_tokens: 3,
-    },
-    {
-      id: 'msg-2',
-      origin: 'request',
-      role: 'user',
-      content: 'hello',
-      raw_message: { role: 'user', content: 'hello' },
-      tool_names: [],
-      meta_tags: {},
-      source_request_id: 'req-1',
-      source_request_timestamp: '2024-01-01T00:00:00Z',
-      source_message_index: 1,
-      last_seen_at: '2024-01-02T00:00:00Z',
-      repeat_count: 2,
-      model: 'gpt-4o-mini',
-      latency_ms: 42,
-      total_tokens: 3,
-    },
-    {
-      id: 'msg-1',
-      origin: 'request',
-      role: 'system',
-      content: 'system prompt',
-      raw_message: { role: 'system', content: 'system prompt' },
-      tool_names: [],
-      meta_tags: { name: 'system' },
-      source_request_id: 'req-1',
-      source_request_timestamp: '2024-01-01T00:00:00Z',
-      source_message_index: 0,
-      last_seen_at: '2024-01-02T00:00:00Z',
-      repeat_count: 2,
-      model: 'gpt-4o-mini',
-      latency_ms: 42,
-      total_tokens: 3,
-    },
+    msg({ id: 'msg-3', origin: 'response', role: 'assistant', content: 'reply',
+      last_seen_at: '2024-01-01T00:00:00Z', repeat_count: 1, source_message_index: 2 }),
+    msg({ id: 'msg-2b', origin: 'response', role: 'assistant', content: 'Tool call: lookup_weather',
+      raw_message: { role: 'assistant', content: '', tool_calls: [
+        { id: 'call_weather_1', type: 'function', function: { name: 'lookup_weather', arguments: '{"city":"Berlin"}' } },
+      ] }, tool_names: ['lookup_weather'], source_message_index: 2 }),
+    msg({ id: 'msg-2', role: 'user', content: 'hello', source_message_index: 1 }),
+    msg({ id: 'msg-1', role: 'system', content: 'system prompt', meta_tags: { name: 'system' } }),
   ];
 }

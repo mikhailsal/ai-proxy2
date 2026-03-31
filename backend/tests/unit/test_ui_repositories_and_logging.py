@@ -34,9 +34,11 @@ def make_request_record(**overrides: object) -> SimpleNamespace:
         "cache_status": "miss",
         "error_message": None,
         "request_headers": {"Authorization": "Bearer secret-token"},
+        "client_request_headers": {"Authorization": "Bearer secret-token", "content-type": "application/json"},
         "request_body": {"messages": [{"role": "system", "content": "hello"}]},
         "client_request_body": {"messages": [{"role": "system", "content": "hello"}], "model": "gpt-4o-mini"},
         "response_headers": {"x-upstream": "1"},
+        "client_response_headers": {"x-upstream": "1"},
         "response_body": {"choices": [{"message": {"content": "world"}}]},
         "client_response_body": None,
         "stream_chunks": [{"choices": [{"delta": {"content": "world"}}]}],
@@ -320,22 +322,30 @@ def test_masking_helpers_and_log_entry_factory() -> None:
     assert mask_sensitive_fields(None) is None
     assert mask_sensitive_fields("value") == "value"
 
+    forwarded_headers = {"authorization": "Bearer sk-provider-key", "x-custom": "added"}
     entry = LogEntry.from_proxy_context(
         entry_id=uuid.uuid4(),
         request=request,
         client_api_key_hash="hash",
+        request_headers=forwarded_headers,
         request_body={"model": "gpt-4o-mini"},
         model_requested="gpt-4o-mini",
         model_resolved="mapped-model",
         provider_name="provider",
         latency_ms=12.3,
         response_status_code=200,
+        response_headers={"content-type": "application/json", "transfer-encoding": "chunked"},
+        client_response_headers={"content-type": "application/json"},
         response_body={"ok": True},
     )
 
     assert entry.client_ip == "127.0.0.1"
     assert entry.path == "/v1/chat/completions"
     assert entry.response_body == {"ok": True}
+    assert entry.request_headers == forwarded_headers
+    assert entry.client_request_headers == {"authorization": "Bearer sk-secret-token"}
+    assert entry.response_headers == {"content-type": "application/json", "transfer-encoding": "chunked"}
+    assert entry.client_response_headers == {"content-type": "application/json"}
 
 
 @pytest.mark.asyncio
