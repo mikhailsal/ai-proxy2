@@ -86,7 +86,7 @@ describe('DiffJsonViewer', () => {
     expect(screen.queryByText('→')).not.toBeInTheDocument();
   });
 
-  it('collapses and expands nested diffs', async () => {
+  it('auto-expands nested diffs that contain changes', async () => {
     render(
       <pre>
         <DiffJsonViewer
@@ -97,9 +97,11 @@ describe('DiffJsonViewer', () => {
       </pre>,
     );
 
-    expect(screen.getByText('(changed)')).toBeInTheDocument();
-    await userEvent.click(screen.getAllByTitle('expand')[0]);
     expect(screen.getByText('"nested"')).toBeInTheDocument();
+    expect(screen.getByText('→')).toBeInTheDocument();
+
+    await userEvent.click(screen.getAllByTitle('collapse')[0]);
+    expect(screen.getByText('(changed)')).toBeInTheDocument();
   });
 
   it('diffs arrays with added and removed elements', async () => {
@@ -150,16 +152,16 @@ describe('DiffJsonViewer', () => {
     expect(screen.getAllByText('"role"').length).toBeGreaterThanOrEqual(2);
   });
 
-  it('renders collapsed arrays with change indicator', async () => {
+  it('auto-expands arrays with changes and shows change indicator when collapsed', async () => {
     render(
       <pre>
         <DiffJsonViewer left={[1, 2]} right={[3, 4]} depth={3} />
       </pre>,
     );
-    expect(screen.getByText('(changed)')).toBeInTheDocument();
-    const expandBtn = screen.getAllByTitle('expand')[0];
-    await userEvent.click(expandBtn);
     expect(screen.getAllByText('→').length).toBeGreaterThanOrEqual(1);
+
+    await userEvent.click(screen.getAllByTitle('collapse')[0]);
+    expect(screen.getByText('(changed)')).toBeInTheDocument();
   });
 
   it('renders empty arrays in diff', () => {

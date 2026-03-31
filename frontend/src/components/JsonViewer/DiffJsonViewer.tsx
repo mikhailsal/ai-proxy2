@@ -36,12 +36,11 @@ export function DiffJsonViewer({ left, right, depth = 0 }: DiffJsonViewerProps) 
 type Obj = Record<string, unknown>;
 
 function DiffObjectNode({ left, right, depth }: { left: Obj; right: Obj; depth: number }) {
-  const [collapsed, setCollapsed] = useState(depth > 2);
   const allKeys = Array.from(new Set([...Object.keys(left), ...Object.keys(right)]));
+  const hasChanges = allKeys.some(k => !deepEqual(left[k], right[k]));
+  const [collapsed, setCollapsed] = useState(hasChanges ? false : depth > 2);
 
   if (allKeys.length === 0) return <span style={{ color: '#8b949e' }}>{'{}'}</span>;
-
-  const hasChanges = allKeys.some(k => !deepEqual(left[k], right[k]));
 
   return (
     <span>
@@ -100,12 +99,11 @@ function DiffObjectNode({ left, right, depth }: { left: Obj; right: Obj; depth: 
 }
 
 function DiffArrayNode({ left, right, depth }: { left: unknown[]; right: unknown[]; depth: number }) {
-  const [collapsed, setCollapsed] = useState(depth > 2);
   const maxLen = Math.max(left.length, right.length);
+  const hasChanges = left.length !== right.length || left.some((v, i) => !deepEqual(v, right[i]));
+  const [collapsed, setCollapsed] = useState(hasChanges ? false : depth > 2);
 
   if (maxLen === 0) return <span style={{ color: '#8b949e' }}>{'[]'}</span>;
-
-  const hasChanges = left.length !== right.length || left.some((v, i) => !deepEqual(v, right[i]));
 
   return (
     <span>

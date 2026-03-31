@@ -126,14 +126,34 @@ function hasDiff(a: unknown, b: unknown): boolean {
   return a != null && b != null && JSON.stringify(a) !== JSON.stringify(b);
 }
 
-function DiffOrPlainSection({ client, provider, title, diffTitle, collapsed = false }: {
+function DiffOrPlainSection({ client, provider, title, diffTitle, collapsed = false, collapsedPaths = [], expandedPaths = [] }: {
   client: unknown; provider: unknown; title: string; diffTitle: string; collapsed?: boolean;
+  collapsedPaths?: string[]; expandedPaths?: string[];
 }) {
   if (hasDiff(client, provider)) {
     return <DiffSection left={client} right={provider} title={diffTitle} />;
   }
   const data = provider ?? client;
-  return data ? <JsonSection data={data} title={title} collapsed={collapsed} /> : null;
+  return data ? <JsonSection data={data} title={title} collapsed={collapsed} collapsedPaths={collapsedPaths} expandedPaths={expandedPaths} /> : null;
+}
+
+function responseBodyCollapsedPaths(body: Record<string, unknown> | null): string[] {
+  if (!body) return [];
+  return Object.keys(body).filter(k => k !== 'choices');
+}
+
+function requestBodyPaths(body: Record<string, unknown> | null): { collapsed: string[]; expanded: string[] } {
+  if (!body) return { collapsed: [], expanded: [] };
+  const collapsed: string[] = [];
+  const expanded: string[] = [];
+  const messages = body.messages;
+  if (Array.isArray(messages) && messages.length > 0) {
+    for (let i = 0; i < messages.length - 1; i++) {
+      collapsed.push(`messages.${i}`);
+    }
+    expanded.push(`messages.${messages.length - 1}`);
+  }
+  return { collapsed, expanded };
 }
 
 function RequestDetailBody({
@@ -146,15 +166,20 @@ function RequestDetailBody({
   if (isLoading) return <div style={styles.loading}>Loading detail…</div>;
   if (!data) return null;
 
+  const responseCollapsed = responseBodyCollapsedPaths(data.client_response_body ?? data.response_body);
+  const reqPaths = requestBodyPaths(data.request_body ?? data.client_request_body);
+
   return (
     <div style={styles.sections}>
       <DiffOrPlainSection
-        client={data.client_request_body} provider={data.request_body}
-        title="Request Body" diffTitle="Request Body (Client → Provider)"
-      />
-      <DiffOrPlainSection
         client={data.response_body} provider={data.client_response_body}
         title="Response Body" diffTitle="Response Body (Provider → Client)"
+        collapsedPaths={responseCollapsed} expandedPaths={['choices']}
+      />
+      <DiffOrPlainSection
+        client={data.client_request_body} provider={data.request_body}
+        title="Request Body" diffTitle="Request Body (Client → Provider)"
+        collapsedPaths={reqPaths.collapsed} expandedPaths={reqPaths.expanded}
       />
       {data.stream_chunks && data.stream_chunks.length > 0 ? (
         <JsonSection data={data.stream_chunks} title={`Stream Chunks (${data.stream_chunks.length})`} collapsed />
@@ -180,15 +205,19 @@ function JsonSection({
   data,
   title,
   collapsed = false,
+  collapsedPaths = [],
+  expandedPaths = [],
 }: {
   data: unknown;
   title: string;
   collapsed?: boolean;
+  collapsedPaths?: string[];
+  expandedPaths?: string[];
 }) {
   return (
     <Section title={title} collapsed={collapsed}>
       <pre style={styles.pre}>
-        <JsonViewer data={data} />
+        <JsonViewer data={data} collapsedPaths={collapsedPaths} expandedPaths={expandedPaths} />
       </pre>
     </Section>
   );
@@ -279,7 +308,7 @@ const styles: Record<string, React.CSSProperties> = {
   metaRow: { display: 'flex', gap: 16, padding: '6px 12px', borderBottom: '1px solid #21262d', flexWrap: 'wrap', flexShrink: 0 },
   exportError: { padding: '8px 12px', color: '#f85149', borderBottom: '1px solid #21262d', fontSize: '0.8rem' },
   sections: { flex: 1, overflow: 'auto' },
-  pre: { margin: 0, fontFamily: 'monospace', fontSize: '0.8rem', lineHeight: 1.5, overflowX: 'auto' },
+  pre: { margin: 0, fontFamily: 'monospace', fontSize: '0.8rem', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' },
   loading: { padding: '2rem', textAlign: 'center', color: '#8b949e' },
   exportButton: { background: 'none', border: 'none', color: '#58a6ff', fontSize: '0.8rem', cursor: 'pointer', padding: 0 },
   closeBtn: { background: 'none', border: 'none', color: '#8b949e', cursor: 'pointer', fontSize: '1rem', padding: '0 4px' },

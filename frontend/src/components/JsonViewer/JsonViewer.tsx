@@ -8,6 +8,10 @@ interface JsonViewerProps {
   expandedPaths?: string[];
 }
 
+function isExpanded(pathKey: string, expandedPaths: string[]): boolean {
+  return expandedPaths.some(ep => pathKey === ep || pathKey.startsWith(ep + '.'));
+}
+
 export function JsonViewer({ data, depth = 0, path = [], collapsedPaths = [], expandedPaths = [] }: JsonViewerProps) {
   if (data === null || data === undefined) {
     return <span style={{ color: '#6e7681' }}>null</span>;
@@ -45,7 +49,7 @@ function ObjectNode({
 }) {
   const pathKey = path.join('.');
   const [collapsed, setCollapsed] = useState(
-    expandedPaths.includes(pathKey) ? false : depth > 2 || collapsedPaths.includes(pathKey),
+    isExpanded(pathKey, expandedPaths) ? false : depth > 2 || collapsedPaths.includes(pathKey),
   );
   const keys = Object.keys(data);
   if (keys.length === 0) return <span style={{ color: '#8b949e' }}>{'{}'}</span>;
@@ -102,7 +106,7 @@ function ArrayNode({
 }) {
   const pathKey = path.join('.');
   const [collapsed, setCollapsed] = useState(
-    expandedPaths.includes(pathKey) ? false : depth > 2 || collapsedPaths.includes(pathKey),
+    isExpanded(pathKey, expandedPaths) ? false : depth > 2 || collapsedPaths.includes(pathKey),
   );
   if (data.length === 0) return <span style={{ color: '#8b949e' }}>{'[]'}</span>;
 
