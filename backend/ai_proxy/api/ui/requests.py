@@ -1,5 +1,6 @@
 """UI API — Request browsing endpoints."""
 
+import json
 import uuid
 from datetime import datetime
 from typing import Annotated, Any
@@ -110,19 +111,55 @@ def _extract_assistant_response(req: ProxyRequest) -> str | None:
         return None
     content = message.get("content")
     if isinstance(content, str) and content:
-        return content[:200]
+        return content[:500]
     tool_calls = message.get("tool_calls")
     if isinstance(tool_calls, list) and tool_calls:
-        names = []
+        parts = []
         for tc in tool_calls:
-            if isinstance(tc, dict):
-                fn = tc.get("function")
-                if isinstance(fn, dict):
-                    names.append(fn.get("name", "tool_call"))
-                else:
-                    names.append("tool_call")
-        return "tool: " + ", ".join(names)
+            if not isinstance(tc, dict):
+                continue
+            fn = tc.get("function")
+            if not isinstance(fn, dict):
+                parts.append("tool_call")
+                continue
+            name = fn.get("name", "tool_call")
+            args_summary = _summarize_tool_args(fn.get("arguments"))
+            parts.append(f"{name}({args_summary})" if args_summary else name)
+        return " | ".join(parts) if parts else None
     return None
+
+
+def _summarize_tool_args(raw_args: object) -> str:
+    if isinstance(raw_args, str):
+        try:
+            parsed = json.loads(raw_args)
+        except (json.JSONDecodeError, ValueError):
+            return ""
+        if not isinstance(parsed, dict):
+            return ""
+        raw_args = parsed
+    if not isinstance(raw_args, dict) or not raw_args:
+        return ""
+    pairs: list[str] = []
+    for key, value in raw_args.items():
+        pairs.append(f"{key}={_compact_value(value)}")
+    return ", ".join(pairs)
+
+
+def _compact_value(value: object) -> str:
+    if isinstance(value, str):
+        return repr(value)
+    if isinstance(value, bool):
+        return str(value).lower()
+    if isinstance(value, int | float):
+        return str(value)
+    if isinstance(value, list):
+        return f"[{len(value)} items]"
+    if isinstance(value, dict):
+        return f"{{{len(value)} keys}}"
+    if value is None:
+        return "null"
+    return str(value)
 
 
 def _serialize_request_full(req: ProxyRequest) -> dict[str, Any]:

@@ -312,7 +312,7 @@ function RequestRow({
         style={{ ...colStyle('assistantMsg', colWidths), ...styles.ellipsis, color: '#8b949e', fontSize: '0.78rem' }}
         title={item.assistant_response ?? undefined}
       >
-        {item.assistant_response ?? '-'}
+        {formatAssistantCell(item.assistant_response, colWidths.assistantMsg)}
       </span>
     </div>
   );
@@ -343,6 +343,105 @@ function formatTokens(item: RequestSummary): string {
   const outputPart = output != null ? `o${output}` : '';
 
   return [inputPart, outputPart].filter(Boolean).join(' ');
+}
+
+const TOOL_CALL_RE = /^(.+?)\((.+)\)$/s;
+const CELL_FONT = '0.78rem sans-serif';
+
+let _measureCtx: CanvasRenderingContext2D | null = null;
+function measureText(text: string): number {
+  if (!_measureCtx) {
+    const canvas = document.createElement('canvas');
+    _measureCtx = canvas.getContext('2d');
+    if (_measureCtx) _measureCtx.font = CELL_FONT;
+  }
+  return _measureCtx?.measureText(text).width ?? text.length * 6;
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function formatAssistantCell(raw: string | null, columnPx: number): string {
+  if (!raw) return '-';
+
+  const segments = raw.split(' | ');
+  if (segments.length === 1) return formatOneToolCall(segments[0], columnPx);
+
+  const separatorPx = measureText(' | ') * (segments.length - 1);
+  const perSegmentPx = Math.floor((columnPx - separatorPx) / segments.length);
+  return segments.map(seg => formatOneToolCall(seg, perSegmentPx)).join(' | ');
+}
+
+function formatOneToolCall(seg: string, budgetPx: number): string {
+  const match = TOOL_CALL_RE.exec(seg);
+  if (!match) return seg;
+  const funcName = match[1];
+  const params = parseParams(match[2]);
+  if (params.length === 0) return seg;
+  const skeleton = funcName + '(' + params.map((p, i) => p.key + '=' + (i < params.length - 1 ? ', ' : '')).join('') + ')';
+  const valueBudgetPx = budgetPx - measureText(skeleton);
+  if (valueBudgetPx <= 0) return funcName + '(' + params.map(p => p.key).join(', ') + ')';
+  const perValuePx = valueBudgetPx / params.length;
+  const parts = params.map(p => {
+    if (measureText(p.value) <= perValuePx) return p.key + '=' + p.value;
+    return p.key + '=' + fitText(p.value, perValuePx);
+  });
+  return funcName + '(' + parts.join(', ') + ')';
+}
+
+function fitText(text: string, maxPx: number): string {
+  const target = maxPx - measureText('…');
+  if (target <= 0) return '…';
+  let lo = 0, hi = text.length;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (measureText(text.slice(0, mid)) <= target) lo = mid; else hi = mid - 1;
+  }
+  return lo === text.length ? text : text.slice(0, lo) + '…';
+}
+
+interface Param { key: string; value: string }
+
+function parseParams(s: string): Param[] {
+  const result: Param[] = [];
+  let i = 0;
+  while (i < s.length) {
+    const eq = s.indexOf('=', i);
+    if (eq === -1) break;
+    const key = s.slice(i, eq).trim();
+    i = eq + 1;
+    let value: string;
+    if (s[i] === "'") {
+      const end = findClosingQuote(s, i, "'");
+      value = s.slice(i, end + 1);
+      i = end + 1;
+    } else if (s[i] === '"') {
+      const end = findClosingQuote(s, i, '"');
+      value = s.slice(i, end + 1);
+      i = end + 1;
+    } else if (s[i] === '[' || s[i] === '{') {
+      const close = s[i] === '[' ? ']' : '}';
+      const end = s.indexOf(close, i);
+      value = end === -1 ? s.slice(i) : s.slice(i, end + 1);
+      i = end === -1 ? s.length : end + 1;
+    } else {
+      const comma = s.indexOf(', ', i);
+      value = comma === -1 ? s.slice(i) : s.slice(i, comma);
+      i = comma === -1 ? s.length : comma;
+    }
+    result.push({ key, value });
+    if (s[i] === ',') i++;
+    while (i < s.length && s[i] === ' ') i++;
+  }
+  return result;
+}
+
+function findClosingQuote(s: string, start: number, quote: string): number {
+  let i = start + 1;
+  while (i < s.length) {
+    if (s[i] === '\\') { i += 2; continue; }
+    if (s[i] === quote) return i;
+    i++;
+  }
+  return s.length - 1;
 }
 
 function formatCost(cost: number | null): string {

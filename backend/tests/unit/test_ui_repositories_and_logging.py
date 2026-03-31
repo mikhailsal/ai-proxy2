@@ -164,26 +164,24 @@ async def test_request_route_helpers_and_export(monkeypatch: pytest.MonkeyPatch)
     record = make_request_record(id=uuid.UUID("11111111-1111-1111-1111-111111111111"))
     missing = uuid.UUID("22222222-2222-2222-2222-222222222222")
 
-    async def list_requests_stub(*args, **kwargs):
+    async def get_req_stub(_s, rid):
+        return record if rid == record.id else None
+
+    async def list_stub(*_a, **_k):
         return [record]
 
-    async def get_request_stub(_session, request_id):
-        return record if request_id == record.id else None
-
-    async def search_requests_stub(*args, **kwargs):
-        return [record]
-
-    async def get_stats_stub(*args, **kwargs):
+    async def stats_stub(*_a, **_k):
         return {"total_requests": 1}
 
-    monkeypatch.setattr(requests.req_repo, "list_requests", list_requests_stub)
-    monkeypatch.setattr(requests.req_repo, "get_request", get_request_stub)
-    monkeypatch.setattr(requests.req_repo, "search_requests", search_requests_stub)
-    monkeypatch.setattr(requests.req_repo, "get_stats", get_stats_stub)
-    monkeypatch.setattr(export.req_repo, "get_request", get_request_stub)
+    monkeypatch.setattr(requests.req_repo, "list_requests", list_stub)
+    monkeypatch.setattr(requests.req_repo, "get_request", get_req_stub)
+    monkeypatch.setattr(requests.req_repo, "search_requests", list_stub)
+    monkeypatch.setattr(requests.req_repo, "get_stats", stats_stub)
+    monkeypatch.setattr(export.req_repo, "get_request", get_req_stub)
 
-    list_response = await requests.list_requests(
-        session=object(),
+    s = object()
+    lr = await requests.list_requests(
+        session=s,
         cursor=None,
         limit=50,
         model=None,
@@ -192,23 +190,22 @@ async def test_request_route_helpers_and_export(monkeypatch: pytest.MonkeyPatch)
         since=None,
         until=None,
     )
-    detail_response = await requests.get_request(str(record.id), session=object())
-    missing_response = await requests.get_request(str(missing), session=object())
-    search_response = await requests.search(q="hello", limit=10, session=object())
-    stats_response = await requests.get_stats(session=object())
-    export_json_response = await export.export_request(str(record.id), format="json", session=object())
-    export_markdown_response = await export.export_request(str(record.id), format="markdown", session=object())
-    export_missing_response = await export.export_request(str(missing), format="json", session=object())
+    dr = await requests.get_request(str(record.id), session=s)
+    mr = await requests.get_request(str(missing), session=s)
+    sr = await requests.search(q="hello", limit=10, session=s)
+    st = await requests.get_stats(session=s)
+    ej = await export.export_request(str(record.id), format="json", session=s)
+    em = await export.export_request(str(record.id), format="markdown", session=s)
+    emiss = await export.export_request(str(missing), format="json", session=s)
 
-    assert list_response.status_code == 200
-    assert detail_response.status_code == 200
-    assert missing_response.status_code == 404
-    assert search_response.status_code == 200
-    assert stats_response.body == b'{"total_requests":1}'
-    assert export_json_response.status_code == 200
-    assert export_markdown_response.media_type == "text/markdown"
-    assert b"# Request" in export_markdown_response.body
-    assert export_missing_response.status_code == 404
+    assert lr.status_code == 200
+    assert dr.status_code == 200
+    assert mr.status_code == 404
+    assert sr.status_code == 200
+    assert st.body == b'{"total_requests":1}'
+    assert ej.status_code == 200
+    assert em.media_type == "text/markdown" and b"# Request" in em.body
+    assert emiss.status_code == 404
 
 
 def test_serialize_request_extracts_message_previews_and_cost() -> None:
@@ -241,12 +238,21 @@ def test_serialize_request_extracts_message_previews_and_cost() -> None:
                         "tool_calls": [{"function": {"name": "search"}}, {"function": {"name": "fetch"}}],
                     }
                 }
-            ],
+            ]
         },
     )
-    result_tool = requests._serialize_request(record_tool)
-    assert result_tool["assistant_response"] == "tool: search, fetch"
-    assert result_tool["cost"] is None
+    assert requests._serialize_request(record_tool)["assistant_response"] == "search | fetch"
+    assert requests._serialize_request(record_tool)["cost"] is None
+
+    tool_with_args = {"name": "write_message", "arguments": '{"text": "hello", "channel": "general"}'}
+    record_tool_args = make_request_record(
+        cost=None,
+        request_body={"messages": [{"role": "user", "content": "call tool"}]},
+        response_body={"choices": [{"message": {"role": "assistant", "tool_calls": [{"function": tool_with_args}]}}]},
+    )
+    assert requests._serialize_request(record_tool_args)["assistant_response"] == (
+        "write_message(text='hello', channel='general')"
+    )
 
 
 def test_serialize_request_cached_tokens_and_edge_cases() -> None:

@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AuthCard } from '../../src/components/Auth/AuthCard';
 import { RequestBrowserToolbar } from '../../src/components/RequestBrowser/RequestBrowserToolbar';
 import { filterRequests, useRequestBrowserData } from '../../src/components/RequestBrowser/requestBrowserData';
-import { RequestBrowserList } from '../../src/components/RequestBrowser/RequestBrowserList';
+import { RequestBrowserList, formatAssistantCell } from '../../src/components/RequestBrowser/RequestBrowserList';
 import type { RequestSummary } from '../../src/types';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -268,6 +268,51 @@ describe('Request browser components', () => {
     await waitFor(() => expect(screen.getByText('second')).toBeInTheDocument());
     await userEvent.click(screen.getByText(request.model_requested ?? '-'));
     expect(onSelect).toHaveBeenCalledWith(request);
+  });
+});
+
+describe('formatAssistantCell', () => {
+  it('returns dash for null', () => {
+    expect(formatAssistantCell(null, 300)).toBe('-');
+  });
+
+  it('passes through plain text', () => {
+    expect(formatAssistantCell('hello world', 300)).toBe('hello world');
+  });
+
+  it('formats single tool call with arguments', () => {
+    const result = formatAssistantCell("greet(name='Alice', mood='happy')", 2000);
+    expect(result).toContain('greet(');
+    expect(result).toContain('name=');
+    expect(result).toContain('mood=');
+    expect(result).toMatch(/\)$/);
+  });
+
+  it('truncates long values but keeps closing bracket', () => {
+    const longVal = 'a'.repeat(500);
+    const result = formatAssistantCell(`fn(x='${longVal}')`, 200);
+    expect(result).toMatch(/\)$/);
+    expect(result).toContain('fn(');
+    expect(result).toContain('x=');
+  });
+
+  it('formats tool call without args', () => {
+    expect(formatAssistantCell('plain_name', 300)).toBe('plain_name');
+  });
+
+  it('handles multiple tool calls separated by pipe', () => {
+    const result = formatAssistantCell("a(x='1') | b(y='2')", 2000);
+    expect(result).toContain('a(');
+    expect(result).toContain('b(');
+    expect(result).toContain(' | ');
+  });
+
+  it('shows all param keys with tight budget', () => {
+    const result = formatAssistantCell("fn(a='long_value', b='another_long_value', c='third')", 100);
+    expect(result).toContain('a=');
+    expect(result).toContain('b=');
+    expect(result).toContain('c=');
+    expect(result).toMatch(/\)$/);
   });
 });
 
