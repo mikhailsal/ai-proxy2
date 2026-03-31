@@ -38,8 +38,16 @@ services:
     labels: []
 
   frontend:
+    build:
+      context: ./frontend
+      target: dev
     ports:
-      - "127.0.0.1:${FRONTEND_PORT:-3000}:80"
+      - "127.0.0.1:${FRONTEND_PORT:-3000}:5173"
     volumes:
-      - ./frontend/dist:/usr/share/nginx/html:ro
+      - ./frontend/src:/app/src
+      - ./frontend/index.html:/app/index.html:ro
+      - ./frontend/vite.config.ts:/app/vite.config.ts:ro
+      - ./frontend/tsconfig.json:/app/tsconfig.json:ro
+    environment:
+      - VITE_API_TARGET=http://backend:8000
     labels: []

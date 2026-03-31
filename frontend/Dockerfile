@@ -1,11 +1,21 @@
-FROM node:22-alpine AS build
+FROM node:22-alpine AS deps
 
 WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci
+
+# ── Dev stage: Vite dev server with HMR ──────────────────────────────
+FROM deps AS dev
+COPY . .
+EXPOSE 5173
+CMD ["npx", "vite"]
+
+# ── Build stage: production bundle ───────────────────────────────────
+FROM deps AS build
 COPY . .
 RUN npm run build
 
+# ── Production stage: nginx serving static files ─────────────────────
 FROM nginx:alpine AS production
 
 ARG HOST_UID=9999
