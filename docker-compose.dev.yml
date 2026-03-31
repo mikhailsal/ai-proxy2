@@ -8,6 +8,15 @@ services:
     ports:
       - "127.0.0.1:5433:5432"
 
+  migrate:
+    build:
+      context: ./backend
+      target: deps
+    volumes:
+      - ./backend/ai_proxy:/app/ai_proxy
+      - ./backend/migrations:/app/migrations
+      - ./backend/alembic.ini:/app/alembic.ini:ro
+
   backend:
     build:
       context: ./backend
@@ -18,6 +27,8 @@ services:
     volumes:
       - ./backend/ai_proxy:/app/ai_proxy
       - ./backend/tests:/app/tests
+      - ./backend/migrations:/app/migrations
+      - ./backend/alembic.ini:/app/alembic.ini:ro
       - ./backend/pyproject.toml:/app/pyproject.toml
       - ./config.yml:/app/config.yml:ro
       - ./config.secrets.yml:/app/config.secrets.yml:ro
@@ -29,4 +40,6 @@ services:
   frontend:
     ports:
       - "127.0.0.1:${FRONTEND_PORT:-3000}:80"
+    volumes:
+      - ./frontend/dist:/usr/share/nginx/html:ro
     labels: []
