@@ -211,6 +211,11 @@ async def test_list_models_and_transport_helpers(monkeypatch: pytest.MonkeyPatch
     assert proxy_router._extract_error_message({"message": "broken"}) == "broken"
     assert proxy_router._extract_error_message({"raw_text": "broken"}) == "broken"
     assert proxy_router._extract_error_message(None, "fallback") == "fallback"
+    assert proxy_router._extract_cost(None) is None
+    assert proxy_router._extract_cost({}) is None
+    assert proxy_router._extract_cost({"usage": {"cost": 0.0025}}) == 0.0025
+    assert proxy_router._extract_cost({"cost": 0.01}) == 0.01
+    assert proxy_router._extract_cost({"usage": {"cost": "not-a-number"}}) is None
 
 
 @pytest.mark.asyncio

@@ -411,9 +411,12 @@ function makeRequestSummary(overrides: Partial<RequestSummary>): RequestSummary 
     input_tokens: 1,
     output_tokens: 2,
     total_tokens: 3,
+    cached_input_tokens: null,
     cost: overrides.cost ?? 0.123456,
     cache_status: overrides.cache_status ?? 'hit',
     error_message: overrides.error_message ?? null,
+    last_user_message: null,
+    assistant_response: null,
   };
 }
 

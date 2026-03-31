@@ -31,10 +31,98 @@ def _serialize_request(req: ProxyRequest) -> dict[str, Any]:
         "input_tokens": req.input_tokens,
         "output_tokens": req.output_tokens,
         "total_tokens": req.total_tokens,
-        "cost": req.cost,
+        "cached_input_tokens": _extract_cached_tokens(req),
+        "cost": req.cost if req.cost is not None else _extract_cost(req),
         "cache_status": req.cache_status,
         "error_message": req.error_message,
+        "last_user_message": _extract_last_user_message(req),
+        "assistant_response": _extract_assistant_response(req),
     }
+
+
+def _extract_cached_tokens(req: ProxyRequest) -> int | None:
+    body = req.response_body or req.client_response_body
+    if not isinstance(body, dict):
+        return None
+    usage = body.get("usage")
+    if not isinstance(usage, dict):
+        return None
+    details = usage.get("prompt_tokens_details")
+    if isinstance(details, dict):
+        cached = details.get("cached_tokens")
+        if isinstance(cached, int):
+            return cached
+    return None
+
+
+def _extract_cost(req: ProxyRequest) -> float | None:
+    body = req.response_body or req.client_response_body
+    if not isinstance(body, dict):
+        return None
+    usage = body.get("usage")
+    if isinstance(usage, dict):
+        cost = usage.get("cost")
+        if isinstance(cost, int | float):
+            return float(cost)
+    cost = body.get("cost")
+    if isinstance(cost, int | float):
+        return float(cost)
+    return None
+
+
+def _extract_last_user_message(req: ProxyRequest) -> str | None:
+    body = req.request_body or req.client_request_body
+    if not isinstance(body, dict):
+        return None
+    messages = body.get("messages")
+    if not isinstance(messages, list):
+        return None
+    for msg in reversed(messages):
+        if not isinstance(msg, dict):
+            continue
+        role = msg.get("role", "")
+        if role == "assistant":
+            continue
+        content = msg.get("content")
+        if isinstance(content, str):
+            return content[:200]
+        if isinstance(content, list):
+            for part in content:
+                if isinstance(part, dict) and part.get("type") == "text":
+                    text = part.get("text")
+                    if isinstance(text, str):
+                        return text[:200]
+    return None
+
+
+def _extract_assistant_response(req: ProxyRequest) -> str | None:
+    body = req.response_body or req.client_response_body
+    if not isinstance(body, dict):
+        return None
+    choices = body.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return None
+    choice = choices[0]
+    if not isinstance(choice, dict):
+        return None
+    message = choice.get("message") or choice.get("delta")
+    if not isinstance(message, dict):
+        return None
+    content = message.get("content")
+    if isinstance(content, str) and content:
+        return content[:200]
+    tool_calls = message.get("tool_calls")
+    if isinstance(tool_calls, list) and tool_calls:
+        names = []
+        for tc in tool_calls:
+            if isinstance(tc, dict):
+                fn = tc.get("function")
+                if isinstance(fn, dict):
+                    names.append(fn.get("name", "tool_call"))
+                else:
+                    names.append("tool_call")
+        return "tool: " + ", ".join(names)
+    return None
 
 
 def _serialize_request_full(req: ProxyRequest) -> dict[str, Any]:

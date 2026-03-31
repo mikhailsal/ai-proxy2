@@ -69,6 +69,20 @@ def _extract_usage(response_body: Any) -> tuple[int | None, int | None, int | No
     )
 
 
+def _extract_cost(response_body: Any) -> float | None:
+    if not isinstance(response_body, dict):
+        return None
+    usage = response_body.get("usage")
+    if isinstance(usage, dict):
+        cost = usage.get("cost")
+        if isinstance(cost, int | float):
+            return float(cost)
+    cost = response_body.get("cost")
+    if isinstance(cost, int | float):
+        return float(cost)
+    return None
+
+
 def _extract_error_message(response_body: Any, fallback: str | None = None) -> str | None:
     if isinstance(response_body, dict):
         error = response_body.get("error")
@@ -219,10 +233,9 @@ async def _handle_non_streaming(
             start_time=start_time,
         )
 
-    latency = (time.monotonic() - start_time) * 1000
     response_body = upstream_response.parsed_body()
-    input_tokens, output_tokens, total_tokens = _extract_usage(response_body)
     client_response_headers = _proxy_response_headers(upstream_response.headers)
+    input_tokens, output_tokens, total_tokens = _extract_usage(response_body)
     await _enqueue_non_streaming_log(
         request=request,
         request_id=request_id,
@@ -231,20 +244,18 @@ async def _handle_non_streaming(
         forward_body=forward_body,
         route=route,
         model_requested=model_requested,
-        latency=latency,
+        latency=(time.monotonic() - start_time) * 1000,
         upstream_response=upstream_response,
         response_body=response_body,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         total_tokens=total_tokens,
+        cost=_extract_cost(response_body),
         client_request_body=client_request_body,
         client_response_headers=client_response_headers,
     )
-
     return Response(
-        content=upstream_response.body,
-        status_code=upstream_response.status_code,
-        headers=client_response_headers,
+        content=upstream_response.body, status_code=upstream_response.status_code, headers=client_response_headers
     )
 
 
@@ -384,28 +395,29 @@ async def _enqueue_non_streaming_log(
     input_tokens: int | None,
     output_tokens: int | None,
     total_tokens: int | None,
+    cost: float | None = None,
     client_request_body: JsonObject | None = None,
     client_response_headers: dict[str, str] | None = None,
 ) -> None:
-    await enqueue_log(
-        LogEntry.from_proxy_context(
-            entry_id=request_id,
-            request=request,
-            client_api_key_hash=key_hash,
-            request_headers=sent_request_headers,
-            request_body=forward_body,
-            client_request_body=client_request_body,
-            model_requested=model_requested,
-            model_resolved=route.mapped_model,
-            provider_name=route.provider_name,
-            latency_ms=latency,
-            response_status_code=upstream_response.status_code,
-            response_headers=upstream_response.headers,
-            client_response_headers=client_response_headers,
-            response_body=response_body,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            total_tokens=total_tokens,
-            error_message=_extract_error_message(response_body),
-        )
+    entry = LogEntry.from_proxy_context(
+        entry_id=request_id,
+        request=request,
+        client_api_key_hash=key_hash,
+        request_headers=sent_request_headers,
+        request_body=forward_body,
+        client_request_body=client_request_body,
+        model_requested=model_requested,
+        model_resolved=route.mapped_model,
+        provider_name=route.provider_name,
+        latency_ms=latency,
+        response_status_code=upstream_response.status_code,
+        response_headers=upstream_response.headers,
+        client_response_headers=client_response_headers,
+        response_body=response_body,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        total_tokens=total_tokens,
+        error_message=_extract_error_message(response_body),
     )
+    entry.cost = cost
+    await enqueue_log(entry)

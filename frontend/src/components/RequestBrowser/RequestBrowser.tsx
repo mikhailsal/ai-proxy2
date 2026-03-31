@@ -45,13 +45,6 @@ export function RequestBrowser({
         setSearchText={setSearchText}
       />
 
-      <div style={styles.header}>
-        <span style={{ width: 170 }}>Timestamp</span>
-        <span style={{ flex: 1 }}>Model</span>
-        <span style={{ width: 60 }}>Status</span>
-        <span style={{ width: 80 }}>Latency</span>
-        <span style={{ width: 70 }}>Tokens</span>
-      </div>
       <RequestBrowserList
         fetchNextPage={fetchNextPage}
         hasNextPage={hasNextPage}
@@ -68,5 +61,4 @@ export function RequestBrowser({
 
 const styles: Record<string, React.CSSProperties> = {
   container: { display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' },
-  header: { display: 'flex', padding: '6px 12px', fontSize: '0.75rem', color: '#8b949e', borderBottom: '1px solid #21262d', fontWeight: 600, flexShrink: 0 },
 };

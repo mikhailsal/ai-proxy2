@@ -286,8 +286,11 @@ function makeRequestSummary(overrides: Partial<RequestSummary>): RequestSummary 
     input_tokens: 1,
     output_tokens: 2,
     total_tokens: overrides.total_tokens ?? 3,
+    cached_input_tokens: null,
     cost: null,
     cache_status: null,
     error_message: null,
+    last_user_message: null,
+    assistant_response: null,
   };
 }

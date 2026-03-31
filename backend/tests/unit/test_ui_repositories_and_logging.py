@@ -211,6 +211,82 @@ async def test_request_route_helpers_and_export(monkeypatch: pytest.MonkeyPatch)
     assert export_missing_response.status_code == 404
 
 
+def test_serialize_request_extracts_message_previews_and_cost() -> None:
+    record = make_request_record(
+        cost=None,
+        request_body={
+            "messages": [
+                {"role": "system", "content": "system prompt"},
+                {"role": "user", "content": "hello world"},
+            ]
+        },
+        response_body={
+            "choices": [{"message": {"role": "assistant", "content": "hi there"}}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15, "cost": 0.002},
+        },
+    )
+    result = requests._serialize_request(record)
+    assert result["last_user_message"] == "hello world"
+    assert result["assistant_response"] == "hi there"
+    assert result["cost"] == 0.002
+
+    record_tool = make_request_record(
+        cost=None,
+        request_body={"messages": [{"role": "user", "content": "call tool"}]},
+        response_body={
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "tool_calls": [{"function": {"name": "search"}}, {"function": {"name": "fetch"}}],
+                    }
+                }
+            ],
+        },
+    )
+    result_tool = requests._serialize_request(record_tool)
+    assert result_tool["assistant_response"] == "tool: search, fetch"
+    assert result_tool["cost"] is None
+
+
+def test_serialize_request_cached_tokens_and_edge_cases() -> None:
+    record_cached = make_request_record(
+        response_body={
+            "usage": {"prompt_tokens_details": {"cached_tokens": 50}},
+            "choices": [{"message": {"content": "ok"}}],
+        },
+    )
+    assert requests._extract_cached_tokens(record_cached) == 50
+
+    record_list_content = make_request_record(
+        request_body={
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image_url", "image_url": {}},
+                        {"type": "text", "text": "describe image"},
+                    ],
+                }
+            ]
+        },
+    )
+    assert requests._extract_last_user_message(record_list_content) == "describe image"
+
+    empty_record = make_request_record(
+        cost=None,
+        request_body=None,
+        client_request_body=None,
+        response_body=None,
+        client_response_body=None,
+    )
+    result_empty = requests._serialize_request(empty_record)
+    assert result_empty["last_user_message"] is None
+    assert result_empty["assistant_response"] is None
+    assert result_empty["cost"] is None
+    assert result_empty["cached_input_tokens"] is None
+
+
 @pytest.mark.asyncio
 async def test_chat_routes(monkeypatch: pytest.MonkeyPatch) -> None:
     record = make_request_record()

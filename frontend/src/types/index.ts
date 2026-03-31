@@ -12,9 +12,12 @@ export interface RequestSummary {
   input_tokens: number | null;
   output_tokens: number | null;
   total_tokens: number | null;
+  cached_input_tokens: number | null;
   cost: number | null;
   cache_status: string | null;
   error_message: string | null;
+  last_user_message: string | null;
+  assistant_response: string | null;
 }
 
 export interface RequestDetail extends RequestSummary {

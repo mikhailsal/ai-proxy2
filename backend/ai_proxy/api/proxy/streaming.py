@@ -189,29 +189,31 @@ async def enqueue_stream_log(
     client_response_headers: dict[str, str] | None = None,
 ) -> None:
     latency = (time.monotonic() - start_time) * 1000
-    await enqueue_log(
-        LogEntry.from_proxy_context(
-            entry_id=request_id,
-            request=request,
-            client_api_key_hash=key_hash,
-            request_headers=sent_request_headers,
-            request_body=forward_body,
-            client_request_body=client_request_body,
-            model_requested=model_requested,
-            model_resolved=route.mapped_model,
-            provider_name=route.provider_name,
-            latency_ms=latency,
-            response_status_code=state.response_status_code,
-            response_headers=state.response_headers,
-            client_response_headers=client_response_headers,
-            response_body=assembled_stream_response(state),
-            stream_chunks=state.chunks_collected if state.chunks_collected else None,
-            input_tokens=state.usage_data.get("prompt_tokens"),
-            output_tokens=state.usage_data.get("completion_tokens"),
-            total_tokens=state.usage_data.get("total_tokens"),
-            error_message=state.stream_error_message,
-        )
+    cost_raw = state.usage_data.get("cost")
+    cost = float(cost_raw) if isinstance(cost_raw, int | float) else None
+    entry = LogEntry.from_proxy_context(
+        entry_id=request_id,
+        request=request,
+        client_api_key_hash=key_hash,
+        request_headers=sent_request_headers,
+        request_body=forward_body,
+        client_request_body=client_request_body,
+        model_requested=model_requested,
+        model_resolved=route.mapped_model,
+        provider_name=route.provider_name,
+        latency_ms=latency,
+        response_status_code=state.response_status_code,
+        response_headers=state.response_headers,
+        client_response_headers=client_response_headers,
+        response_body=assembled_stream_response(state),
+        stream_chunks=state.chunks_collected if state.chunks_collected else None,
+        input_tokens=state.usage_data.get("prompt_tokens"),
+        output_tokens=state.usage_data.get("completion_tokens"),
+        total_tokens=state.usage_data.get("total_tokens"),
+        error_message=state.stream_error_message,
     )
+    entry.cost = cost
+    await enqueue_log(entry)
 
 
 def assembled_stream_response(state: StreamState) -> JsonObject | None:
