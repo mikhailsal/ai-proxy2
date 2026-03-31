@@ -322,12 +322,12 @@ def test_masking_helpers_and_log_entry_factory() -> None:
     assert mask_sensitive_fields(None) is None
     assert mask_sensitive_fields("value") == "value"
 
-    forwarded_headers = {"authorization": "Bearer sk-provider-key", "x-custom": "added"}
+    sent_headers = {"Content-Type": "application/json", "Authorization": "Bearer sk-provider-key"}
     entry = LogEntry.from_proxy_context(
         entry_id=uuid.uuid4(),
         request=request,
         client_api_key_hash="hash",
-        request_headers=forwarded_headers,
+        request_headers=sent_headers,
         request_body={"model": "gpt-4o-mini"},
         model_requested="gpt-4o-mini",
         model_resolved="mapped-model",
@@ -342,7 +342,7 @@ def test_masking_helpers_and_log_entry_factory() -> None:
     assert entry.client_ip == "127.0.0.1"
     assert entry.path == "/v1/chat/completions"
     assert entry.response_body == {"ok": True}
-    assert entry.request_headers == forwarded_headers
+    assert entry.request_headers == sent_headers
     assert entry.client_request_headers == {"authorization": "Bearer sk-secret-token"}
     assert entry.response_headers == {"content-type": "application/json", "transfer-encoding": "chunked"}
     assert entry.client_response_headers == {"content-type": "application/json"}

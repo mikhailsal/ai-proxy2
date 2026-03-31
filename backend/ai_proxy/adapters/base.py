@@ -30,6 +30,7 @@ class ProviderResponse:
     headers: dict[str, str]
     body: bytes
     content_type: str | None = None
+    sent_request_headers: dict[str, str] | None = None
 
     def parsed_body(self) -> JsonValue | dict[str, str] | None:
         return _parse_body(self.body, self.content_type)
@@ -42,6 +43,7 @@ class ProviderStreamResponse:
     content_type: str | None = None
     body: AsyncGenerator[bytes, None] | None = None
     error_body: bytes | None = None
+    sent_request_headers: dict[str, str] | None = None
 
     def parsed_error_body(self) -> JsonValue | dict[str, str] | None:
         if self.error_body is None:

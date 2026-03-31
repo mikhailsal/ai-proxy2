@@ -37,6 +37,7 @@ class OpenAICompatAdapter(BaseAdapter):
                 headers=dict(resp.headers),
                 body=resp.content,
                 content_type=resp.headers.get("content-type"),
+                sent_request_headers=req_headers,
             )
 
     async def stream_chat_completions(
@@ -62,6 +63,7 @@ class OpenAICompatAdapter(BaseAdapter):
                 headers=dict(resp.headers),
                 content_type=resp.headers.get("content-type"),
                 error_body=body,
+                sent_request_headers=req_headers,
             )
 
         async def body_iterator() -> AsyncGenerator[bytes, None]:
@@ -80,6 +82,7 @@ class OpenAICompatAdapter(BaseAdapter):
             headers=dict(resp.headers),
             content_type=resp.headers.get("content-type"),
             body=body_iterator(),
+            sent_request_headers=req_headers,
         )
 
     async def list_models(self) -> list[JsonObject]:

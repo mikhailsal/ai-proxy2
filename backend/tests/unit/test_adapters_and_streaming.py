@@ -98,13 +98,15 @@ async def test_openai_compat_chat_completions_builds_headers(monkeypatch: pytest
     )
 
     assert calls["url"] == "https://provider.example/chat/completions"
-    assert calls["headers"] == {
+    expected_headers = {
         "Content-Type": "application/json",
         "Authorization": "Bearer provider-secret",
         "X-Provider": "yes",
         "X-Request-ID": "req-1",
         "X-Session-ID": "session-1",
     }
+    assert calls["headers"] == expected_headers
+    assert response.sent_request_headers == expected_headers
     assert response.parsed_body() == {"id": "resp"}
 
 
@@ -156,6 +158,7 @@ async def test_openai_compat_streaming_success(monkeypatch: pytest.MonkeyPatch) 
     chunks = [chunk async for chunk in stream_response.body or []]
 
     assert chunks[-1] == b"data: [DONE]\n\n"
+    assert stream_response.sent_request_headers == {"Content-Type": "application/json"}
     assert events == [
         "stream:POST:https://provider.example/chat/completions:gpt-4o-mini",
         "enter",
@@ -196,6 +199,7 @@ async def test_openai_compat_streaming_error(monkeypatch: pytest.MonkeyPatch) ->
     error_response = await adapter.stream_chat_completions({"model": "gpt-4o-mini"}, {})
 
     assert error_response.error_body == b'{"error":{"message":"rate limited"}}'
+    assert error_response.sent_request_headers == {"Content-Type": "application/json"}
     assert error_response.parsed_error_body() == {"raw_text": '{"error":{"message":"rate limited"}}'}
 
 
@@ -265,11 +269,12 @@ async def test_streaming_helpers_success_logging(monkeypatch: pytest.MonkeyPatch
     )
     route = SimpleNamespace(provider_name="provider", mapped_model="mapped-model")
 
+    sent_headers = {"Content-Type": "application/json", "Authorization": "Bearer provider-key"}
     response = streaming.build_streaming_response(
         request=make_request(),
         request_id=uuid.uuid4(),
         key_hash="hash",
-        forward_headers={"authorization": "Bearer proxy-secret", "x-custom": "added"},
+        sent_request_headers=sent_headers,
         forward_body={"model": "mapped-model"},
         route=route,
         model_requested="gpt-4o-mini",
@@ -282,6 +287,7 @@ async def test_streaming_helpers_success_logging(monkeypatch: pytest.MonkeyPatch
     assert chunks[0].startswith(b"data: ")
     assert response.headers["cache-control"] == "no-cache"
     assert logged_entries[0].stream_chunks is not None
+    assert logged_entries[0].request_headers == sent_headers
 
 
 @pytest.mark.asyncio
@@ -303,7 +309,7 @@ async def test_streaming_helpers_error_response(monkeypatch: pytest.MonkeyPatch)
         request=make_request(),
         request_id=uuid.uuid4(),
         key_hash="hash",
-        forward_headers={"authorization": "Bearer proxy-secret"},
+        sent_request_headers={"Content-Type": "application/json"},
         forward_body={"model": "mapped-model"},
         route=route,
         model_requested="gpt-4o-mini",
