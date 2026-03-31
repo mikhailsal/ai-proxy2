@@ -253,7 +253,7 @@ async def test_logging_flush_loop_and_reload_endpoint(monkeypatch: pytest.Monkey
         await task
 
     monkeypatch.setattr("ai_proxy.app.build_registry", lambda _config: None)
-    monkeypatch.setattr("ai_proxy.config.loader.reload_config", lambda _path: SimpleNamespace())
+    monkeypatch.setattr("ai_proxy.config.loader.reload_config", lambda _path, **kw: SimpleNamespace())
 
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         reload_response = await client.post("/admin/reload-config")

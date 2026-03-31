@@ -53,6 +53,8 @@ class AppConfig(BaseModel):
     modification_rules: list[ModificationRule] = Field(default_factory=list)
     bypass: BypassConfig = Field(default_factory=BypassConfig)
     key_mappings: dict[str, KeyMappingEntry] = Field(default_factory=dict)
+    api_keys: list[str] = Field(default_factory=list)
+    ui_api_key: str = ""
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     grouping: GroupingConfig = Field(default_factory=GroupingConfig)
 
@@ -60,6 +62,7 @@ class AppConfig(BaseModel):
 class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://ai_proxy:password@localhost:5432/ai_proxy"
     config_path: str = "config.yml"
+    secrets_path: str = "config.secrets.yml"
     api_keys: str = ""
     ui_api_key: str = ""
     host: str = "0.0.0.0"  # noqa: S104
@@ -76,6 +79,9 @@ class Settings(BaseSettings):
 
     def get_config_path(self) -> Path:
         return Path(self.config_path)
+
+    def get_secrets_path(self) -> Path:
+        return Path(self.secrets_path)
 
 
 _settings: Settings | None = None

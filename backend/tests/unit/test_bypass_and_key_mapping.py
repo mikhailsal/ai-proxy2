@@ -378,7 +378,7 @@ def test_resolve_provider_key_mapping_wrong_provider(monkeypatch: pytest.MonkeyP
 # ── Config loading tests ──────────────────────────────────────────────
 
 
-def test_bypass_config_loaded_from_yaml(tmp_path) -> None:
+def test_bypass_config_loaded_from_yaml_with_secrets(tmp_path) -> None:
     from ai_proxy.config.loader import load_config
 
     config_path = tmp_path / "config.yml"
@@ -386,18 +386,26 @@ def test_bypass_config_loaded_from_yaml(tmp_path) -> None:
         """
 bypass:
   enabled: true
+""".strip()
+    )
+
+    secrets_path = tmp_path / "config.secrets.yml"
+    secrets_path.write_text(
+        """
 key_mappings:
-  abc123hash:
+  my-client-key:
     provider_keys:
       openrouter: "sk-or-v1-mapped"
       anthropic: "sk-ant-mapped"
 """.strip()
     )
-    config = load_config(str(config_path))
+
+    config = load_config(str(config_path), secrets_path=str(secrets_path))
     assert config.bypass.enabled is True
-    assert "abc123hash" in config.key_mappings
-    assert config.key_mappings["abc123hash"].provider_keys["openrouter"] == "sk-or-v1-mapped"
-    assert config.key_mappings["abc123hash"].provider_keys["anthropic"] == "sk-ant-mapped"
+    client_hash = _sha256("my-client-key")
+    assert client_hash in config.key_mappings
+    assert config.key_mappings[client_hash].provider_keys["openrouter"] == "sk-or-v1-mapped"
+    assert config.key_mappings[client_hash].provider_keys["anthropic"] == "sk-ant-mapped"
 
 
 def test_bypass_config_defaults_when_absent(tmp_path) -> None:

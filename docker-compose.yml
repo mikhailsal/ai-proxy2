@@ -77,6 +77,7 @@ services:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-ai_proxy}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ai_proxy}
     volumes:
       - ./config.yml:/app/config.yml:ro
+      - ./config.secrets.yml:/app/config.secrets.yml:ro
     labels:
       - "traefik.enable=true"
       # Proxy API: api.domain.com

@@ -30,8 +30,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     init_engine(settings.database_url)
     logger.info("database_initialized")
 
-    # Load config
-    config = load_config(settings.config_path)
+    # Load config (public + secrets)
+    config = load_config(settings.config_path, secrets_path=settings.secrets_path)
 
     # Build adapter registry
     build_registry(config)
@@ -88,7 +88,7 @@ def create_app() -> FastAPI:
         from ai_proxy.config.loader import reload_config as do_reload
 
         settings = get_settings()
-        config = do_reload(settings.config_path)
+        config = do_reload(settings.config_path, secrets_path=settings.secrets_path)
         build_registry(config)
         return {"status": "reloaded"}
 

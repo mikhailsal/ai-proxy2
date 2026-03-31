@@ -20,11 +20,10 @@ services:
       - ./backend/tests:/app/tests
       - ./backend/pyproject.toml:/app/pyproject.toml
       - ./config.yml:/app/config.yml:ro
+      - ./config.secrets.yml:/app/config.secrets.yml:ro
     environment:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-ai_proxy}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ai_proxy}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
-      - API_KEYS=${API_KEYS:-}
-      - UI_API_KEY=${UI_API_KEY:-}
     labels: []
 
   frontend:

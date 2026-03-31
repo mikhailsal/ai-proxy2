@@ -1,5 +1,6 @@
 # Credentials (never commit)
 .env
+config.secrets.yml
 tmp-credentials-for-testing.md
 
 # Python

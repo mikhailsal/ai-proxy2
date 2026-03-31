@@ -83,6 +83,85 @@ def test_loader_handles_missing_config_file(tmp_path: Path) -> None:
     assert config == AppConfig()
 
 
+def test_loader_merges_secrets_file(tmp_path: Path) -> None:
+    import hashlib
+
+    config_path = tmp_path / "config.yml"
+    config_path.write_text(
+        """
+providers:
+  primary:
+    endpoint: https://provider.example
+bypass:
+  enabled: false
+""".strip()
+    )
+
+    secrets_path = tmp_path / "config.secrets.yml"
+    secrets_path.write_text(
+        """
+api_keys:
+  - "proxy-key-1"
+  - "proxy-key-2"
+ui_api_key: "ui-secret"
+key_mappings:
+  "proxy-key-1":
+    provider_keys:
+      primary: "sk-provider-key-for-client-1"
+""".strip()
+    )
+
+    config = loader.load_config(str(config_path), secrets_path=str(secrets_path))
+
+    assert config.api_keys == ["proxy-key-1", "proxy-key-2"]
+    assert config.ui_api_key == "ui-secret"
+
+    expected_hash = hashlib.sha256(b"proxy-key-1").hexdigest()
+    assert expected_hash in config.key_mappings
+    assert config.key_mappings[expected_hash].provider_keys["primary"] == "sk-provider-key-for-client-1"
+
+
+def test_loader_auto_hashes_plaintext_keys_and_passes_hashed_through(tmp_path: Path) -> None:
+    import hashlib
+
+    pre_hashed = hashlib.sha256(b"already-hashed-input").hexdigest()
+
+    secrets_path = tmp_path / "config.secrets.yml"
+    secrets_path.write_text(
+        f"""
+key_mappings:
+  "plaintext-client-key":
+    provider_keys:
+      openrouter: "sk-or-v1-key"
+  "{pre_hashed}":
+    provider_keys:
+      openrouter: "sk-or-v1-other-key"
+""".strip()
+    )
+
+    config_path = tmp_path / "config.yml"
+    config_path.write_text("providers: {}")
+
+    config = loader.load_config(str(config_path), secrets_path=str(secrets_path))
+
+    plaintext_hash = hashlib.sha256(b"plaintext-client-key").hexdigest()
+    assert plaintext_hash in config.key_mappings
+    assert pre_hashed in config.key_mappings
+    assert config.key_mappings[plaintext_hash].provider_keys["openrouter"] == "sk-or-v1-key"
+    assert config.key_mappings[pre_hashed].provider_keys["openrouter"] == "sk-or-v1-other-key"
+
+
+def test_loader_works_without_secrets_file(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.yml"
+    config_path.write_text("providers: {}")
+
+    config = loader.load_config(str(config_path), secrets_path=str(tmp_path / "nonexistent.yml"))
+
+    assert config.api_keys == []
+    assert config.ui_api_key == ""
+    assert config.key_mappings == {}
+
+
 def test_access_rules_and_modifications(monkeypatch: pytest.MonkeyPatch) -> None:
     config = AppConfig(
         access_rules={
@@ -155,7 +234,10 @@ def test_registry_and_routing(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_proxy_and_ui_auth(monkeypatch: pytest.MonkeyPatch) -> None:
-    settings = SimpleNamespace(get_api_keys=lambda: ["proxy-secret"], ui_api_key="ui-secret")
+    config = AppConfig(api_keys=["proxy-secret"], ui_api_key="ui-secret")
+    monkeypatch.setattr(loader, "_app_config", config)
+
+    settings = SimpleNamespace(get_api_keys=lambda: [], ui_api_key="")
     monkeypatch.setattr("ai_proxy.security.auth.get_settings", lambda: settings)
 
     assert len(hash_api_key("proxy-secret")) == 64

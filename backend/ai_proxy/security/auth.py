@@ -1,4 +1,8 @@
-"""API key authentication using SHA-256 hashing."""
+"""API key authentication using SHA-256 hashing.
+
+Keys are resolved from config.secrets.yml (via AppConfig) with fallback
+to the legacy environment variables (API_KEYS / UI_API_KEY in Settings).
+"""
 
 import hashlib
 
@@ -15,14 +19,41 @@ def mask_api_key(api_key: str) -> str:
     return f"{api_key[:3]}***{api_key[-4:]}"
 
 
+def _get_configured_api_keys() -> list[str]:
+    """Return proxy access keys from config secrets, falling back to env var."""
+    from ai_proxy.config.loader import get_app_config
+
+    try:
+        config = get_app_config()
+        if config.api_keys:
+            return config.api_keys
+    except RuntimeError:
+        pass
+
+    return get_settings().get_api_keys()
+
+
+def _get_ui_api_key() -> str:
+    """Return UI key from config secrets, falling back to env var."""
+    from ai_proxy.config.loader import get_app_config
+
+    try:
+        config = get_app_config()
+        if config.ui_api_key:
+            return config.ui_api_key
+    except RuntimeError:
+        pass
+
+    return get_settings().ui_api_key
+
+
 def validate_proxy_api_key(api_key: str | None, *, bypass_enabled: bool = False) -> tuple[bool, str]:
     if bypass_enabled:
         if api_key is None:
             return False, ""
         return True, hash_api_key(api_key)
 
-    settings = get_settings()
-    configured_keys = settings.get_api_keys()
+    configured_keys = _get_configured_api_keys()
     if not configured_keys:
         return True, hash_api_key("anonymous") if api_key is None else hash_api_key(api_key)
     if api_key is None:
@@ -35,7 +66,7 @@ def validate_proxy_api_key(api_key: str | None, *, bypass_enabled: bool = False)
 
 
 def validate_ui_api_key(api_key: str | None) -> bool:
-    settings = get_settings()
-    if not settings.ui_api_key:
+    ui_key = _get_ui_api_key()
+    if not ui_key:
         return True
-    return api_key == settings.ui_api_key
+    return api_key == ui_key

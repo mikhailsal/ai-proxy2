@@ -68,17 +68,11 @@ model_mappings:
 # Bypass mode (optional)
 # When enabled, the client's own API key is forwarded to the upstream provider.
 # No preconfigured API_KEYS are required — any non-empty key is accepted.
-# bypass:
-#   enabled: true
+bypass:
+  enabled: true
 
-# Key mappings (optional)
-# Map client API key hashes to per-provider upstream keys.
-# Use `python -c "import hashlib; print(hashlib.sha256(b'YOUR_CLIENT_KEY').hexdigest())"` to get the hash.
-# key_mappings:
-#   "<sha256-hash-of-client-key>":
-#     provider_keys:
-#       openrouter: "sk-or-v1-client-specific-openrouter-key"
-#       anthropic: "sk-ant-client-specific-anthropic-key"
+# Key mappings, API keys, and UI key are stored in config.secrets.yml
+# (see config.secrets.example.yml for the template).
 
 # Access rules (optional)
 access_rules: {}
