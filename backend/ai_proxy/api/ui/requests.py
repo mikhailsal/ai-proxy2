@@ -43,8 +43,10 @@ def _serialize_request_full(req: ProxyRequest) -> dict[str, Any]:
         {
             "request_headers": req.request_headers,
             "request_body": req.request_body,
+            "client_request_body": req.client_request_body,
             "response_headers": req.response_headers,
             "response_body": req.response_body,
+            "client_response_body": req.client_response_body,
             "stream_chunks": req.stream_chunks,
             "reasoning_tokens": req.reasoning_tokens,
             "metadata": req.metadata_,

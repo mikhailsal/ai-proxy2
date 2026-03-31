@@ -17,9 +17,11 @@ class LogEntry(BaseModel):
     path: str = "/v1/chat/completions"
     request_headers: dict[str, Any] | None = None
     request_body: dict[str, Any] | list[Any] | None = None
+    client_request_body: dict[str, Any] | list[Any] | None = None
     response_status_code: int | None = None
     response_headers: dict[str, Any] | None = None
     response_body: dict[str, Any] | list[Any] | None = None
+    client_response_body: dict[str, Any] | list[Any] | None = None
     stream_chunks: list[Any] | None = None
     model_requested: str | None = None
     model_resolved: str | None = None
@@ -47,8 +49,10 @@ class LogEntry(BaseModel):
         provider_name: str,
         latency_ms: float,
         response_status_code: int,
+        client_request_body: dict[str, Any] | list[Any] | None = None,
         response_headers: dict[str, Any] | None = None,
         response_body: dict[str, Any] | list[Any] | None = None,
+        client_response_body: dict[str, Any] | list[Any] | None = None,
         stream_chunks: list[Any] | None = None,
         input_tokens: int | None = None,
         output_tokens: int | None = None,
@@ -64,9 +68,11 @@ class LogEntry(BaseModel):
             path=request.url.path,
             request_headers=dict(request.headers),
             request_body=request_body,
+            client_request_body=client_request_body,
             response_status_code=response_status_code,
             response_headers=response_headers,
             response_body=response_body,
+            client_response_body=client_response_body,
             stream_chunks=stream_chunks,
             model_requested=model_requested,
             model_resolved=model_resolved,

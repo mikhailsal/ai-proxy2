@@ -242,7 +242,7 @@ def test_proxy_and_ui_auth(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert len(hash_api_key("proxy-secret")) == 64
     assert mask_api_key("short") == "***"
-    assert mask_api_key("abcdefghijk") == "abc***hijk"
+    assert mask_api_key("abcdefghijk") == "abc*****ijk"
     assert validate_proxy_api_key("proxy-secret")[0] is True
     assert validate_proxy_api_key("proxy-secret")[2] is True
     ok, key_hash, is_known = validate_proxy_api_key("wrong")

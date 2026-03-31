@@ -8,9 +8,10 @@ MASK_PATTERNS = re.compile(r"(key|token|secret|password|authorization)", re.IGNO
 
 
 def mask_api_key(value: str) -> str:
-    if not value or len(value) <= 8:
+    if not value or len(value) <= 6:
         return "***"
-    return f"{value[:3]}***{value[-4:]}"
+    masked_len = len(value) - 6
+    return f"{value[:3]}{'*' * masked_len}{value[-3:]}"
 
 
 def mask_headers(headers: JsonObject) -> JsonObject:

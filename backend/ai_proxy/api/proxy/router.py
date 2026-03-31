@@ -150,6 +150,8 @@ async def chat_completions(request: Request) -> Response:
     if client_api_key:
         override_api_key = resolve_provider_key(client_api_key, route.provider_name, is_known_key=is_known_key)
 
+    client_request_body: JsonObject = dict(body)
+
     forward_body: JsonObject = {**body, "model": route.mapped_model}
     forward_headers = dict(request.headers)
     forward_body, forward_headers = apply_modifications(
@@ -168,6 +170,7 @@ async def chat_completions(request: Request) -> Response:
             key_hash,
             start_time,
             override_api_key=override_api_key,
+            client_request_body=client_request_body,
         )
 
     return await _handle_non_streaming(
@@ -180,6 +183,7 @@ async def chat_completions(request: Request) -> Response:
         key_hash,
         start_time,
         override_api_key=override_api_key,
+        client_request_body=client_request_body,
     )
 
 
@@ -194,6 +198,7 @@ async def _handle_non_streaming(
     start_time: float,
     *,
     override_api_key: str | None = None,
+    client_request_body: JsonObject | None = None,
 ) -> Response:
     try:
         upstream_response = await route.adapter.chat_completions(
@@ -231,6 +236,7 @@ async def _handle_non_streaming(
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         total_tokens=total_tokens,
+        client_request_body=client_request_body,
     )
 
     return Response(
@@ -251,6 +257,7 @@ async def _handle_streaming(
     start_time: float,
     *,
     override_api_key: str | None = None,
+    client_request_body: JsonObject | None = None,
 ) -> Response | StreamingResponse:
     try:
         upstream_stream = await route.adapter.stream_chat_completions(
@@ -283,6 +290,7 @@ async def _handle_streaming(
             upstream_stream=upstream_stream,
             extract_error_message=_extract_error_message,
             proxy_response_headers=_proxy_response_headers,
+            client_request_body=client_request_body,
         )
 
     return build_streaming_response(
@@ -295,6 +303,7 @@ async def _handle_streaming(
         start_time=start_time,
         upstream_stream=upstream_stream,
         proxy_response_headers=_proxy_response_headers,
+        client_request_body=client_request_body,
     )
 
 
@@ -371,6 +380,7 @@ async def _enqueue_non_streaming_log(
     input_tokens: int | None,
     output_tokens: int | None,
     total_tokens: int | None,
+    client_request_body: JsonObject | None = None,
 ) -> None:
     await enqueue_log(
         LogEntry.from_proxy_context(
@@ -378,6 +388,7 @@ async def _enqueue_non_streaming_log(
             request=request,
             client_api_key_hash=key_hash,
             request_body=forward_body,
+            client_request_body=client_request_body,
             model_requested=model_requested,
             model_resolved=route.mapped_model,
             provider_name=route.provider_name,

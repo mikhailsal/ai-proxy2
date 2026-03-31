@@ -35,8 +35,10 @@ def make_request_record(**overrides: object) -> SimpleNamespace:
         "error_message": None,
         "request_headers": {"Authorization": "Bearer secret-token"},
         "request_body": {"messages": [{"role": "system", "content": "hello"}]},
+        "client_request_body": {"messages": [{"role": "system", "content": "hello"}], "model": "gpt-4o-mini"},
         "response_headers": {"x-upstream": "1"},
         "response_body": {"choices": [{"message": {"content": "world"}}]},
+        "client_response_body": None,
         "stream_chunks": [{"choices": [{"delta": {"content": "world"}}]}],
         "reasoning_tokens": 0,
         "metadata_": {"trace": "abc"},
@@ -306,14 +308,14 @@ def test_masking_helpers_and_log_entry_factory() -> None:
     )
 
     assert mask_api_key("short") == "***"
-    assert mask_api_key("abcdefghijk") == "abc***hijk"
+    assert mask_api_key("abcdefghijk") == "abc*****ijk"
     assert mask_headers({"Authorization": "Bearer secret", "X-Test": "ok"}) == {
-        "Authorization": "Bea***cret",
+        "Authorization": "Bea*******ret",
         "X-Test": "ok",
     }
     assert mask_sensitive_fields({"token": "secret-token", "nested": [{"password": "p4ssw0rd"}]}) == {
-        "token": "sec***oken",
-        "nested": [{"password": "***"}],
+        "token": "sec******ken",
+        "nested": [{"password": "p4s**0rd"}],
     }
     assert mask_sensitive_fields(None) is None
     assert mask_sensitive_fields("value") == "value"

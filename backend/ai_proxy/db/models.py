@@ -51,9 +51,11 @@ class ProxyRequest(Base):
     path: Mapped[str] = mapped_column(String(512), nullable=False)
     request_headers: Mapped[JsonObject | None] = mapped_column(JSONB, nullable=True)
     request_body: Mapped[JsonObject | JsonArray | None] = mapped_column(JSONB, nullable=True)
+    client_request_body: Mapped[JsonObject | JsonArray | None] = mapped_column(JSONB, nullable=True)
     response_status_code: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     response_headers: Mapped[JsonObject | None] = mapped_column(JSONB, nullable=True)
     response_body: Mapped[JsonObject | JsonArray | None] = mapped_column(JSONB, nullable=True)
+    client_response_body: Mapped[JsonObject | JsonArray | None] = mapped_column(JSONB, nullable=True)
     stream_chunks: Mapped[JsonArray | None] = mapped_column(JSONB, nullable=True)
     search_vector: Mapped[str | None] = mapped_column(
         TSVECTOR,

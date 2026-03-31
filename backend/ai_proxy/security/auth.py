@@ -14,9 +14,10 @@ def hash_api_key(api_key: str) -> str:
 
 
 def mask_api_key(api_key: str) -> str:
-    if len(api_key) <= 8:
+    if len(api_key) <= 6:
         return "***"
-    return f"{api_key[:3]}***{api_key[-4:]}"
+    masked_len = len(api_key) - 6
+    return f"{api_key[:3]}{'*' * masked_len}{api_key[-3:]}"
 
 
 def _get_configured_api_keys() -> list[str]:

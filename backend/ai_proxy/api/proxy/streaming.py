@@ -43,6 +43,7 @@ async def stream_error_response(
     upstream_stream: Any,
     extract_error_message: Callable[[Any], str | None],
     proxy_response_headers: Callable[[dict[str, str]], dict[str, str]],
+    client_request_body: JsonObject | None = None,
 ) -> Response:
     latency = (time.monotonic() - start_time) * 1000
     response_body = upstream_stream.parsed_error_body()
@@ -52,6 +53,7 @@ async def stream_error_response(
             request=request,
             client_api_key_hash=key_hash,
             request_body=forward_body,
+            client_request_body=client_request_body,
             model_requested=model_requested,
             model_resolved=route.mapped_model,
             provider_name=route.provider_name,
@@ -80,6 +82,7 @@ def build_streaming_response(
     start_time: float,
     upstream_stream: Any,
     proxy_response_headers: Callable[[dict[str, str]], dict[str, str]],
+    client_request_body: JsonObject | None = None,
 ) -> StreamingResponse:
     state = StreamState(
         response_headers=upstream_stream.headers,
@@ -98,6 +101,7 @@ def build_streaming_response(
             model_requested=model_requested,
             start_time=start_time,
             state=state,
+            client_request_body=client_request_body,
         )
 
     streaming_headers = proxy_response_headers(state.response_headers)
@@ -172,6 +176,7 @@ async def enqueue_stream_log(
     model_requested: str,
     start_time: float,
     state: StreamState,
+    client_request_body: JsonObject | None = None,
 ) -> None:
     latency = (time.monotonic() - start_time) * 1000
     await enqueue_log(
@@ -180,6 +185,7 @@ async def enqueue_stream_log(
             request=request,
             client_api_key_hash=key_hash,
             request_body=forward_body,
+            client_request_body=client_request_body,
             model_requested=model_requested,
             model_resolved=route.mapped_model,
             provider_name=route.provider_name,

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useApi } from '../../hooks/useApi';
 import { JsonViewer } from '../JsonViewer/JsonViewer';
+import { DiffJsonViewer } from '../JsonViewer/DiffJsonViewer';
 import type { RequestDetail as RequestDetailType, RequestSummary } from '../../types';
 
 interface RequestDetailProps {
@@ -136,10 +137,31 @@ function RequestDetailBody({
     return null;
   }
 
+  const hasRequestDiff = data.client_request_body != null
+    && JSON.stringify(data.client_request_body) !== JSON.stringify(data.request_body);
+  const hasResponseDiff = data.client_response_body != null
+    && JSON.stringify(data.client_response_body) !== JSON.stringify(data.response_body);
+
   return (
     <div style={styles.sections}>
-      <JsonSection data={data.request_body} title="Request Body" />
-      <JsonSection data={data.response_body} title="Response Body" />
+      {hasRequestDiff ? (
+        <DiffSection
+          left={data.client_request_body}
+          right={data.request_body}
+          title="Request Body (Client → Provider)"
+        />
+      ) : (
+        <JsonSection data={data.request_body} title="Request Body" />
+      )}
+      {hasResponseDiff ? (
+        <DiffSection
+          left={data.response_body}
+          right={data.client_response_body}
+          title="Response Body (Provider → Client)"
+        />
+      ) : (
+        <JsonSection data={data.response_body} title="Response Body" />
+      )}
       {data.stream_chunks && data.stream_chunks.length > 0 ? (
         <JsonSection data={data.stream_chunks} title={`Stream Chunks (${data.stream_chunks.length})`} collapsed />
       ) : null}
@@ -171,6 +193,37 @@ function JsonSection({
   );
 }
 
+function DiffSection({
+  left,
+  right,
+  title,
+}: {
+  left: unknown;
+  right: unknown;
+  title: string;
+}) {
+  const [showDiff, setShowDiff] = useState(true);
+
+  return (
+    <Section title={title} badge={
+      <button
+        onClick={e => { e.stopPropagation(); setShowDiff(d => !d); }}
+        style={styles.diffToggle}
+      >
+        {showDiff ? 'Plain' : 'Diff'}
+      </button>
+    }>
+      <pre style={styles.pre}>
+        {showDiff ? (
+          <DiffJsonViewer left={left} right={right} />
+        ) : (
+          <JsonViewer data={right} />
+        )}
+      </pre>
+    </Section>
+  );
+}
+
 function MetaBadge({ label, value }: { label: string; value: string }) {
   return (
     <span style={{ display: 'flex', gap: 4, alignItems: 'center', fontSize: '0.77rem' }}>
@@ -184,18 +237,23 @@ function Section({
   title,
   children,
   collapsed: initCollapsed = false,
+  badge,
 }: {
   title: string;
   children: React.ReactNode;
   collapsed?: boolean;
+  badge?: React.ReactNode;
 }) {
   const [open, setOpen] = useState(!initCollapsed);
   return (
     <div style={{ borderBottom: '1px solid #21262d' }}>
-      <button onClick={() => setOpen(o => !o)} style={sectionHeaderStyle}>
-        <span>{open ? '▼' : '▶'}</span>
-        <span>{title}</span>
-      </button>
+      <div style={{ display: 'flex', alignItems: 'center' }}>
+        <button onClick={() => setOpen(o => !o)} style={sectionHeaderStyle}>
+          <span>{open ? '▼' : '▶'}</span>
+          <span>{title}</span>
+        </button>
+        {badge && <div style={{ marginRight: 12, flexShrink: 0 }}>{badge}</div>}
+      </div>
       {open && <div style={{ padding: '0 12px 12px' }}>{children}</div>}
     </div>
   );
@@ -224,6 +282,7 @@ const styles: Record<string, React.CSSProperties> = {
   loading: { padding: '2rem', textAlign: 'center', color: '#8b949e' },
   exportButton: { background: 'none', border: 'none', color: '#58a6ff', fontSize: '0.8rem', cursor: 'pointer', padding: 0 },
   closeBtn: { background: 'none', border: 'none', color: '#8b949e', cursor: 'pointer', fontSize: '1rem', padding: '0 4px' },
+  diffToggle: { background: 'rgba(88, 166, 255, 0.1)', border: '1px solid rgba(88, 166, 255, 0.3)', borderRadius: 4, color: '#58a6ff', cursor: 'pointer', fontSize: '0.72rem', padding: '1px 8px', whiteSpace: 'nowrap' as const },
 };
 
 const sectionHeaderStyle: React.CSSProperties = {

@@ -20,8 +20,10 @@ export interface RequestSummary {
 export interface RequestDetail extends RequestSummary {
   request_headers: Record<string, unknown> | null;
   request_body: Record<string, unknown> | null;
+  client_request_body: Record<string, unknown> | null;
   response_headers: Record<string, unknown> | null;
   response_body: Record<string, unknown> | null;
+  client_response_body: Record<string, unknown> | null;
   stream_chunks: unknown[] | null;
   reasoning_tokens: number | null;
   metadata: Record<string, unknown> | null;
