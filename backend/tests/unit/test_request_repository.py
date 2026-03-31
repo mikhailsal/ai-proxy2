@@ -66,7 +66,6 @@ class FakeSession:
 async def test_create_request_and_get_request() -> None:
     existing = SimpleNamespace(id=uuid4())
     session = FakeSession(QueryResult(scalar_one_or_none_value=existing))
-    cursor = req_repo.encode_cursor(datetime(2024, 1, 5, tzinfo=timezone.utc), existing.id)
 
     created = await req_repo.create_request(
         session,
@@ -78,7 +77,6 @@ async def test_create_request_and_get_request() -> None:
 
     assert isinstance(created, ProxyRequest)
     assert created.path == "/v1/chat/completions"
-    assert req_repo.decode_cursor(cursor) == (datetime(2024, 1, 5, tzinfo=timezone.utc), existing.id)
     assert session.added == [created]
     assert session.commit_calls == 1
     assert session.refreshed == [created]
@@ -100,12 +98,11 @@ async def test_list_requests_and_search_requests_apply_filters() -> None:
 
     listed = await req_repo.list_requests(
         session,
-        cursor=(cursor, listed_record.id),
+        cursor=cursor,
         limit=10,
         model="gpt-4o-mini",
         client_hash="client-hash",
         status_code=200,
-        provider_name="openrouter",
         since=since,
         until=until,
     )
@@ -117,18 +114,14 @@ async def test_list_requests_and_search_requests_apply_filters() -> None:
     list_query = str(session.queries[0])
     search_query = str(session.queries[1])
     assert "proxy_requests.timestamp <" in list_query
-    assert "proxy_requests.id <" in list_query
     assert "proxy_requests.model_requested =" in list_query
     assert "proxy_requests.client_api_key_hash =" in list_query
     assert "proxy_requests.response_status_code =" in list_query
-    assert "JOIN providers" in list_query
-    assert "providers.name =" in list_query
     assert "proxy_requests.timestamp >=" in list_query
     assert "proxy_requests.timestamp <=" in list_query
     assert "LIMIT" in list_query
-    assert "plainto_tsquery" in search_query
-    assert "ts_rank_cd" in search_query
-    assert "@@" in search_query
+    assert "like" in search_query.lower()
+    assert "cast" in search_query.lower()
 
 
 @pytest.mark.asyncio

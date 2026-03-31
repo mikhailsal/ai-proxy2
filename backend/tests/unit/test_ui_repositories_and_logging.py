@@ -172,7 +172,6 @@ async def test_request_route_helpers_and_export(monkeypatch: pytest.MonkeyPatch)
     async def get_stats_stub(*args, **kwargs):
         return {"total_requests": 1}
 
-    monkeypatch.setattr(requests.req_repo, "decode_cursor", lambda _cursor: None)
     monkeypatch.setattr(requests.req_repo, "list_requests", list_requests_stub)
     monkeypatch.setattr(requests.req_repo, "get_request", get_request_stub)
     monkeypatch.setattr(requests.req_repo, "search_requests", search_requests_stub)

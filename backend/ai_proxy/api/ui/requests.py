@@ -64,17 +64,13 @@ async def list_requests(
     since: str | None = Query(None),
     until: str | None = Query(None),
 ) -> JSONResponse:
-    try:
-        cursor_value = req_repo.decode_cursor(cursor) if cursor else None
-    except ValueError:
-        return JSONResponse({"error": "Invalid cursor"}, status_code=400)
-
+    cursor_dt = datetime.fromisoformat(cursor) if cursor else None
     since_dt = datetime.fromisoformat(since) if since else None
     until_dt = datetime.fromisoformat(until) if until else None
 
     reqs = await req_repo.list_requests(
         session,
-        cursor=cursor_value,
+        cursor=cursor_dt,
         limit=limit,
         model=model,
         client_hash=client_hash,
@@ -84,7 +80,7 @@ async def list_requests(
     )
 
     items = [_serialize_request(r) for r in reqs]
-    next_cursor = req_repo.encode_cursor(reqs[-1].timestamp, reqs[-1].id) if reqs and reqs[-1].timestamp else None
+    next_cursor = items[-1]["timestamp"] if items else None
 
     return JSONResponse({"items": items, "next_cursor": next_cursor})
 

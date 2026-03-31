@@ -17,7 +17,14 @@ def test_create_app_has_health_route() -> None:
 
 
 @pytest.mark.asyncio
-async def test_lifespan_runs_without_error() -> None:
+async def test_lifespan_runs_without_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("ai_proxy.app.init_engine", lambda _url: None)
+    monkeypatch.setattr("ai_proxy.app.dispose_engine", _fake_async_noop)
+
     app = create_app()
     async with lifespan(app):
         pass
+
+
+async def _fake_async_noop() -> None:
+    pass
