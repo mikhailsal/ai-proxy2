@@ -14,20 +14,22 @@ logger = structlog.get_logger()
 
 
 class OpenAICompatAdapter(BaseAdapter):
-    def _build_headers(self, headers: dict[str, str]) -> dict[str, str]:
+    def _build_headers(self, headers: dict[str, str], *, override_api_key: str | None = None) -> dict[str, str]:
         out = {"Content-Type": "application/json"}
-        if self.api_key:
-            out["Authorization"] = f"Bearer {self.api_key}"
+        effective_key = override_api_key if override_api_key is not None else self.api_key
+        if effective_key:
+            out["Authorization"] = f"Bearer {effective_key}"
         out.update(self.extra_headers)
-        # Forward select client headers
         for h in ("X-Request-ID", "X-Session-ID"):
             if h in headers:
                 out[h] = headers[h]
         return out
 
-    async def chat_completions(self, request_body: dict[str, Any], headers: dict[str, str]) -> ProviderResponse:
+    async def chat_completions(
+        self, request_body: dict[str, Any], headers: dict[str, str], *, override_api_key: str | None = None
+    ) -> ProviderResponse:
         url = f"{self.endpoint_url}/chat/completions"
-        req_headers = self._build_headers(headers)
+        req_headers = self._build_headers(headers, override_api_key=override_api_key)
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             resp = await client.post(url, json=request_body, headers=req_headers)
             return ProviderResponse(
@@ -38,10 +40,10 @@ class OpenAICompatAdapter(BaseAdapter):
             )
 
     async def stream_chat_completions(
-        self, request_body: dict[str, Any], headers: dict[str, str]
+        self, request_body: dict[str, Any], headers: dict[str, str], *, override_api_key: str | None = None
     ) -> ProviderStreamResponse:
         url = f"{self.endpoint_url}/chat/completions"
-        req_headers = self._build_headers(headers)
+        req_headers = self._build_headers(headers, override_api_key=override_api_key)
         client = httpx.AsyncClient(timeout=self.timeout)
         response_context = client.stream("POST", url, json=request_body, headers=req_headers)
 

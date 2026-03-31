@@ -3,7 +3,7 @@
 import structlog
 import yaml
 
-from ai_proxy.config.settings import AppConfig, ProviderConfig
+from ai_proxy.config.settings import AppConfig, KeyMappingEntry, ProviderConfig
 
 logger = structlog.get_logger()
 
@@ -23,15 +23,28 @@ def load_config(config_path: str) -> AppConfig:
     for name, prov_data in raw.get("providers", {}).items():
         providers[name] = ProviderConfig(**prov_data)
 
+    key_mappings: dict[str, KeyMappingEntry] = {}
+    for client_key, mapping_data in raw.get("key_mappings", {}).items():
+        if isinstance(mapping_data, dict):
+            key_mappings[client_key] = KeyMappingEntry(**mapping_data)
+
     _app_config = AppConfig(
         providers=providers,
         model_mappings=raw.get("model_mappings", {}),
         access_rules=raw.get("access_rules", {}),
         modification_rules=raw.get("modification_rules", []),
+        bypass=raw.get("bypass", {}),
+        key_mappings=key_mappings,
         logging=raw.get("logging", {}),
         grouping=raw.get("grouping", {}),
     )
-    logger.info("config_loaded", providers=list(providers.keys()), mappings=len(_app_config.model_mappings))
+    logger.info(
+        "config_loaded",
+        providers=list(providers.keys()),
+        mappings=len(_app_config.model_mappings),
+        bypass_enabled=_app_config.bypass.enabled,
+        key_mappings_count=len(_app_config.key_mappings),
+    )
     return _app_config
 
 

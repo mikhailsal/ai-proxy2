@@ -62,8 +62,23 @@ model_mappings:
   # ── Extra: memcomp-bench models not in the list above ──
   "x-ai/grok-4.1-fast": "openrouter:x-ai/grok-4.1-fast"
   "google/gemini-3.1-flash-lite-preview": "openrouter:google/gemini-3.1-flash-lite-preview"
-  # ── Fallback: unmapped models → gpt-4o-mini ──
-  "*": "openrouter:openai/gpt-4o-mini"
+  # ── Fallback: unmapped models → free route ──
+  "*": "openrouter:openrouter/free"
+
+# Bypass mode (optional)
+# When enabled, the client's own API key is forwarded to the upstream provider.
+# No preconfigured API_KEYS are required — any non-empty key is accepted.
+# bypass:
+#   enabled: true
+
+# Key mappings (optional)
+# Map client API key hashes to per-provider upstream keys.
+# Use `python -c "import hashlib; print(hashlib.sha256(b'YOUR_CLIENT_KEY').hexdigest())"` to get the hash.
+# key_mappings:
+#   "<sha256-hash-of-client-key>":
+#     provider_keys:
+#       openrouter: "sk-or-v1-client-specific-openrouter-key"
+#       anthropic: "sk-ant-client-specific-anthropic-key"
 
 # Access rules (optional)
 access_rules: {}

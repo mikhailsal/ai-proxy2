@@ -15,7 +15,12 @@ def mask_api_key(api_key: str) -> str:
     return f"{api_key[:3]}***{api_key[-4:]}"
 
 
-def validate_proxy_api_key(api_key: str | None) -> tuple[bool, str]:
+def validate_proxy_api_key(api_key: str | None, *, bypass_enabled: bool = False) -> tuple[bool, str]:
+    if bypass_enabled:
+        if api_key is None:
+            return False, ""
+        return True, hash_api_key(api_key)
+
     settings = get_settings()
     configured_keys = settings.get_api_keys()
     if not configured_keys:

@@ -65,11 +65,13 @@ class BaseAdapter(ABC):
         self.timeout = timeout
 
     @abstractmethod
-    async def chat_completions(self, request_body: dict[str, Any], headers: dict[str, str]) -> ProviderResponse: ...
+    async def chat_completions(
+        self, request_body: dict[str, Any], headers: dict[str, str], *, override_api_key: str | None = None
+    ) -> ProviderResponse: ...
 
     @abstractmethod
     async def stream_chat_completions(
-        self, request_body: dict[str, Any], headers: dict[str, str]
+        self, request_body: dict[str, Any], headers: dict[str, str], *, override_api_key: str | None = None
     ) -> ProviderStreamResponse: ...
 
     @abstractmethod

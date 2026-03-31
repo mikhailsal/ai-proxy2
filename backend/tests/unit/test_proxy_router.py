@@ -8,6 +8,7 @@ from httpx import ASGITransport, AsyncClient
 from ai_proxy.adapters.base import ProviderResponse
 from ai_proxy.api.proxy import router as proxy_router
 from ai_proxy.app import create_app
+from ai_proxy.config.settings import AppConfig
 
 
 class FakeAdapter:
@@ -15,18 +16,26 @@ class FakeAdapter:
         self._response = response
         self._error = error
 
-    async def chat_completions(self, request_body: dict[str, Any], headers: dict[str, str]) -> ProviderResponse:
+    async def chat_completions(
+        self, request_body: dict[str, Any], headers: dict[str, str], *, override_api_key: str | None = None
+    ) -> ProviderResponse:
         if self._error is not None:
             raise self._error
         assert self._response is not None
         return self._response
 
-    async def stream_chat_completions(self, request_body: dict[str, Any], headers: dict[str, str]):
+    async def stream_chat_completions(
+        self, request_body: dict[str, Any], headers: dict[str, str], *, override_api_key: str | None = None
+    ):
         msg = "Streaming is not used in this test"
         raise AssertionError(msg)
 
     async def list_models(self) -> list[dict[str, Any]]:
         return []
+
+
+def _default_config():
+    return AppConfig()
 
 
 @pytest.mark.asyncio
@@ -50,10 +59,12 @@ async def test_non_streaming_provider_http_error_is_preserved(
     async def capture_log(entry):
         logged_entries.append(entry)
 
+    monkeypatch.setattr(proxy_router, "get_app_config", _default_config)
     monkeypatch.setattr(proxy_router, "check_model_access", lambda *_args: (True, ""))
     monkeypatch.setattr(proxy_router, "apply_modifications", lambda body, headers, *_args: (body, headers))
     monkeypatch.setattr(proxy_router, "resolve_model", lambda _model: route)
     monkeypatch.setattr(proxy_router, "enqueue_log", capture_log)
+    monkeypatch.setattr(proxy_router, "resolve_provider_key", lambda *_args: None)
 
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post(
@@ -83,10 +94,12 @@ async def test_non_streaming_transport_errors_become_gateway_failures(
     async def capture_log(entry):
         logged_entries.append(entry)
 
+    monkeypatch.setattr(proxy_router, "get_app_config", _default_config)
     monkeypatch.setattr(proxy_router, "check_model_access", lambda *_args: (True, ""))
     monkeypatch.setattr(proxy_router, "apply_modifications", lambda body, headers, *_args: (body, headers))
     monkeypatch.setattr(proxy_router, "resolve_model", lambda _model: route)
     monkeypatch.setattr(proxy_router, "enqueue_log", capture_log)
+    monkeypatch.setattr(proxy_router, "resolve_provider_key", lambda *_args: None)
 
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post(

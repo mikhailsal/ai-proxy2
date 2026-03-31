@@ -38,11 +38,21 @@ class ModificationRule(BaseModel):
     value: str | None = None
 
 
+class BypassConfig(BaseModel):
+    enabled: bool = False
+
+
+class KeyMappingEntry(BaseModel):
+    provider_keys: dict[str, str] = Field(default_factory=dict)
+
+
 class AppConfig(BaseModel):
     providers: dict[str, ProviderConfig] = Field(default_factory=dict)
     model_mappings: dict[str, str] = Field(default_factory=dict)
     access_rules: dict[str, AccessRule] = Field(default_factory=dict)
     modification_rules: list[ModificationRule] = Field(default_factory=list)
+    bypass: BypassConfig = Field(default_factory=BypassConfig)
+    key_mappings: dict[str, KeyMappingEntry] = Field(default_factory=dict)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     grouping: GroupingConfig = Field(default_factory=GroupingConfig)
 

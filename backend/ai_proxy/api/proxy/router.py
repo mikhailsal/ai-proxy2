@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from ai_proxy.api.proxy.streaming import build_streaming_response, stream_error_response
 from ai_proxy.config.loader import get_app_config
 from ai_proxy.core.access import check_model_access
+from ai_proxy.core.key_resolution import resolve_provider_key
 from ai_proxy.core.modification import apply_modifications
 from ai_proxy.core.routing import RouteResult, resolve_model
 from ai_proxy.logging.models import LogEntry
@@ -101,7 +102,8 @@ async def _parse_request_body(request: Request) -> JsonObject | JSONResponse:
 
 def _authenticate_proxy_request(request: Request) -> tuple[str, str] | JSONResponse:
     api_key = _extract_api_key(request)
-    is_valid, key_hash = validate_proxy_api_key(api_key)
+    config = get_app_config()
+    is_valid, key_hash = validate_proxy_api_key(api_key, bypass_enabled=config.bypass.enabled)
     if not is_valid:
         return JSONResponse({"error": {"message": "Invalid API key"}}, status_code=401)
 
@@ -137,12 +139,16 @@ async def chat_completions(request: Request) -> Response:
     auth = _authenticate_proxy_request(request)
     if isinstance(auth, JSONResponse):
         return auth
-    _, key_hash = auth
+    client_api_key, key_hash = auth
 
     request_validation = _validate_and_route_request(body, key_hash)
     if isinstance(request_validation, JSONResponse):
         return request_validation
     model_requested, route = request_validation
+
+    override_api_key: str | None = None
+    if client_api_key:
+        override_api_key = resolve_provider_key(client_api_key, route.provider_name)
 
     forward_body: JsonObject = {**body, "model": route.mapped_model}
     forward_headers = dict(request.headers)
@@ -153,11 +159,27 @@ async def chat_completions(request: Request) -> Response:
     is_streaming = bool(body.get("stream", False))
     if is_streaming:
         return await _handle_streaming(
-            request, request_id, forward_body, forward_headers, route, model_requested, key_hash, start_time
+            request,
+            request_id,
+            forward_body,
+            forward_headers,
+            route,
+            model_requested,
+            key_hash,
+            start_time,
+            override_api_key=override_api_key,
         )
 
     return await _handle_non_streaming(
-        request, request_id, forward_body, forward_headers, route, model_requested, key_hash, start_time
+        request,
+        request_id,
+        forward_body,
+        forward_headers,
+        route,
+        model_requested,
+        key_hash,
+        start_time,
+        override_api_key=override_api_key,
     )
 
 
@@ -170,9 +192,15 @@ async def _handle_non_streaming(
     model_requested: str,
     key_hash: str,
     start_time: float,
+    *,
+    override_api_key: str | None = None,
 ) -> Response:
     try:
-        upstream_response = await route.adapter.chat_completions(forward_body, forward_headers)
+        upstream_response = await route.adapter.chat_completions(
+            forward_body,
+            forward_headers,
+            override_api_key=override_api_key,
+        )
     except httpx.RequestError as error:
         return await _transport_error_response(
             error=error,
@@ -221,9 +249,15 @@ async def _handle_streaming(
     model_requested: str,
     key_hash: str,
     start_time: float,
+    *,
+    override_api_key: str | None = None,
 ) -> Response | StreamingResponse:
     try:
-        upstream_stream = await route.adapter.stream_chat_completions(forward_body, forward_headers)
+        upstream_stream = await route.adapter.stream_chat_completions(
+            forward_body,
+            forward_headers,
+            override_api_key=override_api_key,
+        )
     except httpx.RequestError as error:
         return await _transport_error_response(
             error=error,
@@ -267,11 +301,11 @@ async def _handle_streaming(
 @router.get("/v1/models")
 async def list_models(request: Request) -> JSONResponse:
     api_key = _extract_api_key(request)
-    is_valid, key_hash = validate_proxy_api_key(api_key)
+    config = get_app_config()
+    is_valid, key_hash = validate_proxy_api_key(api_key, bypass_enabled=config.bypass.enabled)
     if not is_valid:
         return JSONResponse({"error": {"message": "Invalid API key"}}, status_code=401)
 
-    config = get_app_config()
     models: list[JsonObject] = []
     seen: set[str] = set()
     for model_name in config.model_mappings:
