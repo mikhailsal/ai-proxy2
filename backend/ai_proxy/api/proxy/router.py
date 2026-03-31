@@ -100,14 +100,14 @@ async def _parse_request_body(request: Request) -> JsonObject | JSONResponse:
     return body
 
 
-def _authenticate_proxy_request(request: Request) -> tuple[str, str] | JSONResponse:
+def _authenticate_proxy_request(request: Request) -> tuple[str, str, bool] | JSONResponse:
     api_key = _extract_api_key(request)
     config = get_app_config()
-    is_valid, key_hash = validate_proxy_api_key(api_key, bypass_enabled=config.bypass.enabled)
+    is_valid, key_hash, is_known_key = validate_proxy_api_key(api_key, bypass_enabled=config.bypass.enabled)
     if not is_valid:
         return JSONResponse({"error": {"message": "Invalid API key"}}, status_code=401)
 
-    return api_key or "", key_hash
+    return api_key or "", key_hash, is_known_key
 
 
 def _validate_and_route_request(body: JsonObject, key_hash: str) -> tuple[str, RouteResult] | JSONResponse:
@@ -139,7 +139,7 @@ async def chat_completions(request: Request) -> Response:
     auth = _authenticate_proxy_request(request)
     if isinstance(auth, JSONResponse):
         return auth
-    client_api_key, key_hash = auth
+    client_api_key, key_hash, is_known_key = auth
 
     request_validation = _validate_and_route_request(body, key_hash)
     if isinstance(request_validation, JSONResponse):
@@ -148,7 +148,7 @@ async def chat_completions(request: Request) -> Response:
 
     override_api_key: str | None = None
     if client_api_key:
-        override_api_key = resolve_provider_key(client_api_key, route.provider_name)
+        override_api_key = resolve_provider_key(client_api_key, route.provider_name, is_known_key=is_known_key)
 
     forward_body: JsonObject = {**body, "model": route.mapped_model}
     forward_headers = dict(request.headers)
@@ -302,7 +302,7 @@ async def _handle_streaming(
 async def list_models(request: Request) -> JSONResponse:
     api_key = _extract_api_key(request)
     config = get_app_config()
-    is_valid, key_hash = validate_proxy_api_key(api_key, bypass_enabled=config.bypass.enabled)
+    is_valid, key_hash, _is_known = validate_proxy_api_key(api_key, bypass_enabled=config.bypass.enabled)
     if not is_valid:
         return JSONResponse({"error": {"message": "Invalid API key"}}, status_code=401)
 

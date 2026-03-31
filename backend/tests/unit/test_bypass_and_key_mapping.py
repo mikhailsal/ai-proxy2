@@ -24,7 +24,6 @@ from ai_proxy.config.settings import (
 )
 from ai_proxy.core import key_resolution as key_resolution_mod
 from ai_proxy.core.key_resolution import resolve_provider_key
-from ai_proxy.security.auth import hash_api_key
 
 
 class CapturingAdapter:
@@ -130,7 +129,7 @@ async def test_bypass_disabled_uses_default_key(monkeypatch: pytest.MonkeyPatch)
     )
     monkeypatch.setattr(proxy_router, "get_app_config", lambda: normal_config)
     monkeypatch.setattr(key_resolution_mod, "get_app_config", lambda: normal_config)
-    monkeypatch.setattr(proxy_router, "validate_proxy_api_key", lambda _key, **kw: (True, "hash"))
+    monkeypatch.setattr(proxy_router, "validate_proxy_api_key", lambda _key, **kw: (True, "hash", True))
     _patch_common(monkeypatch, adapter)
 
     app = create_app()
@@ -166,7 +165,7 @@ async def test_key_mapping_routes_to_correct_provider_key(monkeypatch: pytest.Mo
     )
     monkeypatch.setattr(proxy_router, "get_app_config", lambda: mapping_config)
     monkeypatch.setattr(key_resolution_mod, "get_app_config", lambda: mapping_config)
-    monkeypatch.setattr(proxy_router, "validate_proxy_api_key", lambda _key, **kw: (True, client_hash))
+    monkeypatch.setattr(proxy_router, "validate_proxy_api_key", lambda _key, **kw: (True, client_hash, True))
     _patch_common(monkeypatch, adapter)
 
     app = create_app()
@@ -205,7 +204,7 @@ async def test_key_mapping_different_providers(monkeypatch: pytest.MonkeyPatch) 
 
     monkeypatch.setattr(proxy_router, "get_app_config", lambda: config)
     monkeypatch.setattr(key_resolution_mod, "get_app_config", lambda: config)
-    monkeypatch.setattr(proxy_router, "validate_proxy_api_key", lambda _key, **kw: (True, client_hash))
+    monkeypatch.setattr(proxy_router, "validate_proxy_api_key", lambda _key, **kw: (True, client_hash, True))
     monkeypatch.setattr(proxy_router, "check_model_access", lambda *_args: (True, ""))
     monkeypatch.setattr(proxy_router, "apply_modifications", lambda body, headers, *_args: (body, headers))
 
@@ -255,7 +254,7 @@ async def test_key_mapping_no_match_uses_default(monkeypatch: pytest.MonkeyPatch
     )
     monkeypatch.setattr(proxy_router, "get_app_config", lambda: config)
     monkeypatch.setattr(key_resolution_mod, "get_app_config", lambda: config)
-    monkeypatch.setattr(proxy_router, "validate_proxy_api_key", lambda _key, **kw: (True, _sha256("my-key")))
+    monkeypatch.setattr(proxy_router, "validate_proxy_api_key", lambda _key, **kw: (True, _sha256("my-key"), True))
     _patch_common(monkeypatch, adapter)
 
     app = create_app()
@@ -287,7 +286,7 @@ async def test_key_mapping_provider_not_in_entry(monkeypatch: pytest.MonkeyPatch
     )
     monkeypatch.setattr(proxy_router, "get_app_config", lambda: config)
     monkeypatch.setattr(key_resolution_mod, "get_app_config", lambda: config)
-    monkeypatch.setattr(proxy_router, "validate_proxy_api_key", lambda _key, **kw: (True, client_hash))
+    monkeypatch.setattr(proxy_router, "validate_proxy_api_key", lambda _key, **kw: (True, client_hash, True))
     _patch_common(monkeypatch, adapter)
 
     app = create_app()
@@ -303,26 +302,30 @@ async def test_key_mapping_provider_not_in_entry(monkeypatch: pytest.MonkeyPatch
     assert adapter.last_override_key is None
 
 
-# ── Bypass takes precedence over key mapping ──────────────────────────
+# ── Known key mapping takes precedence over bypass ─────────────────────
 
 
 @pytest.mark.asyncio
-async def test_bypass_takes_precedence_over_key_mapping(monkeypatch: pytest.MonkeyPatch) -> None:
-    """When both bypass and key_mapping are configured, bypass wins."""
+async def test_known_key_mapping_takes_precedence_over_bypass(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When key is known and has a mapping, the mapped provider key is used
+    even when bypass is enabled. Bypass only applies to unknown keys."""
     adapter = CapturingAdapter()
     client_key = "dual-mode-client"
     client_hash = _sha256(client_key)
+    mapped_provider_key = "sk-or-mapped-for-known-client"
 
     config = AppConfig(
         bypass=BypassConfig(enabled=True),
         key_mappings={
-            client_hash: KeyMappingEntry(provider_keys={"openrouter": "sk-or-should-not-be-used"}),
+            client_hash: KeyMappingEntry(provider_keys={"openrouter": mapped_provider_key}),
         },
+        api_keys=[client_key],
         providers={"openrouter": ProviderConfig(endpoint="https://openrouter.ai/api/v1")},
         model_mappings={"test-model": "openrouter:test-model"},
     )
     monkeypatch.setattr(proxy_router, "get_app_config", lambda: config)
     monkeypatch.setattr(key_resolution_mod, "get_app_config", lambda: config)
+    monkeypatch.setattr(proxy_router, "validate_proxy_api_key", lambda _key, **kw: (True, client_hash, True))
     _patch_common(monkeypatch, adapter)
 
     app = create_app()
@@ -335,16 +338,73 @@ async def test_bypass_takes_precedence_over_key_mapping(monkeypatch: pytest.Monk
         )
 
     assert response.status_code == 200
-    assert adapter.last_override_key == client_key
+    assert adapter.last_override_key == mapped_provider_key
+
+
+@pytest.mark.asyncio
+async def test_unknown_key_uses_bypass_when_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When key is NOT known but bypass is enabled, the client's raw key
+    is forwarded to the provider."""
+    adapter = CapturingAdapter()
+    unknown_client_key = "sk-or-v1-external-user-key"
+
+    config = AppConfig(
+        bypass=BypassConfig(enabled=True),
+        providers={"openrouter": ProviderConfig(endpoint="https://openrouter.ai/api/v1")},
+        model_mappings={"test-model": "openrouter:test-model"},
+    )
+    monkeypatch.setattr(proxy_router, "get_app_config", lambda: config)
+    monkeypatch.setattr(key_resolution_mod, "get_app_config", lambda: config)
+    _patch_common(monkeypatch, adapter)
+
+    app = create_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            headers={"Authorization": f"Bearer {unknown_client_key}"},
+            json={"model": "test-model", "messages": [{"role": "user", "content": "hi"}]},
+        )
+
+    assert response.status_code == 200
+    assert adapter.last_override_key == unknown_client_key
 
 
 # ── Unit tests for resolve_provider_key ───────────────────────────────
 
 
-def test_resolve_provider_key_bypass(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_resolve_provider_key_known_key_with_mapping(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Known key with a mapping -> mapped provider key, even with bypass on."""
+    client_hash = _sha256("client-key")
+    config = AppConfig(
+        bypass=BypassConfig(enabled=True),
+        key_mappings={
+            client_hash: KeyMappingEntry(provider_keys={"openrouter": "mapped-key"}),
+        },
+    )
+    monkeypatch.setattr(key_resolution_mod, "get_app_config", lambda: config)
+    assert resolve_provider_key("client-key", "openrouter", is_known_key=True) == "mapped-key"
+
+
+def test_resolve_provider_key_known_key_without_mapping(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Known key without mapping -> None (adapter default), bypass not used."""
     config = AppConfig(bypass=BypassConfig(enabled=True))
     monkeypatch.setattr(key_resolution_mod, "get_app_config", lambda: config)
-    assert resolve_provider_key("client-key", "openrouter") == "client-key"
+    assert resolve_provider_key("client-key", "openrouter", is_known_key=True) is None
+
+
+def test_resolve_provider_key_unknown_key_bypass_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Unknown key + bypass enabled -> forward client key."""
+    config = AppConfig(bypass=BypassConfig(enabled=True))
+    monkeypatch.setattr(key_resolution_mod, "get_app_config", lambda: config)
+    assert resolve_provider_key("external-key", "openrouter", is_known_key=False) == "external-key"
+
+
+def test_resolve_provider_key_unknown_key_bypass_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Unknown key + bypass disabled -> None."""
+    config = AppConfig(bypass=BypassConfig(enabled=False))
+    monkeypatch.setattr(key_resolution_mod, "get_app_config", lambda: config)
+    assert resolve_provider_key("external-key", "openrouter", is_known_key=False) is None
 
 
 def test_resolve_provider_key_mapping(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -375,87 +435,8 @@ def test_resolve_provider_key_mapping_wrong_provider(monkeypatch: pytest.MonkeyP
     assert resolve_provider_key("client-key", "openrouter") is None
 
 
-# ── Config loading tests ──────────────────────────────────────────────
-
-
-def test_bypass_config_loaded_from_yaml_with_secrets(tmp_path) -> None:
-    from ai_proxy.config.loader import load_config
-
-    config_path = tmp_path / "config.yml"
-    config_path.write_text(
-        """
-bypass:
-  enabled: true
-""".strip()
-    )
-
-    secrets_path = tmp_path / "config.secrets.yml"
-    secrets_path.write_text(
-        """
-key_mappings:
-  my-client-key:
-    provider_keys:
-      openrouter: "sk-or-v1-mapped"
-      anthropic: "sk-ant-mapped"
-""".strip()
-    )
-
-    config = load_config(str(config_path), secrets_path=str(secrets_path))
-    assert config.bypass.enabled is True
-    client_hash = _sha256("my-client-key")
-    assert client_hash in config.key_mappings
-    assert config.key_mappings[client_hash].provider_keys["openrouter"] == "sk-or-v1-mapped"
-    assert config.key_mappings[client_hash].provider_keys["anthropic"] == "sk-ant-mapped"
-
-
-def test_bypass_config_defaults_when_absent(tmp_path) -> None:
-    from ai_proxy.config.loader import load_config
-
-    config_path = tmp_path / "config.yml"
-    config_path.write_text("providers: {}")
-    config = load_config(str(config_path))
-    assert config.bypass.enabled is False
-    assert config.key_mappings == {}
-
-
-# ── Adapter override tests ────────────────────────────────────────────
-
-
-def test_adapter_build_headers_with_override() -> None:
-    from ai_proxy.adapters.openai_compat import OpenAICompatAdapter
-
-    adapter = OpenAICompatAdapter(
-        provider_name="test",
-        endpoint_url="https://example.com/v1",
-        api_key="default-key",
-    )
-
-    headers_default = adapter._build_headers({})
-    assert headers_default["Authorization"] == "Bearer default-key"
-
-    headers_override = adapter._build_headers({}, override_api_key="override-key")
-    assert headers_override["Authorization"] == "Bearer override-key"
-
-    headers_none = adapter._build_headers({}, override_api_key=None)
-    assert headers_none["Authorization"] == "Bearer default-key"
-
-
-# ── Auth bypass tests ─────────────────────────────────────────────────
-
-
-def test_validate_proxy_api_key_bypass_mode() -> None:
-    from ai_proxy.security.auth import validate_proxy_api_key
-
-    ok, key_hash = validate_proxy_api_key("any-random-key", bypass_enabled=True)
-    assert ok is True
-    assert key_hash == hash_api_key("any-random-key")
-
-    ok, key_hash = validate_proxy_api_key(None, bypass_enabled=True)
-    assert ok is False
-    assert key_hash == ""
-
-
-# ── /v1/models with bypass ────────────────────────────────────────────
+# ── Config loading, adapter override, and auth bypass tests are in ─────
+# ── test_support_modules.py to keep this file focused on key routing. ─
 
 
 @pytest.mark.asyncio

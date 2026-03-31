@@ -64,7 +64,7 @@ async def test_non_streaming_provider_http_error_is_preserved(
     monkeypatch.setattr(proxy_router, "apply_modifications", lambda body, headers, *_args: (body, headers))
     monkeypatch.setattr(proxy_router, "resolve_model", lambda _model: route)
     monkeypatch.setattr(proxy_router, "enqueue_log", capture_log)
-    monkeypatch.setattr(proxy_router, "resolve_provider_key", lambda *_args: None)
+    monkeypatch.setattr(proxy_router, "resolve_provider_key", lambda *_args, **_kw: None)
 
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post(
@@ -99,7 +99,7 @@ async def test_non_streaming_transport_errors_become_gateway_failures(
     monkeypatch.setattr(proxy_router, "apply_modifications", lambda body, headers, *_args: (body, headers))
     monkeypatch.setattr(proxy_router, "resolve_model", lambda _model: route)
     monkeypatch.setattr(proxy_router, "enqueue_log", capture_log)
-    monkeypatch.setattr(proxy_router, "resolve_provider_key", lambda *_args: None)
+    monkeypatch.setattr(proxy_router, "resolve_provider_key", lambda *_args, **_kw: None)
 
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post(

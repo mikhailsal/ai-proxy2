@@ -47,22 +47,35 @@ def _get_ui_api_key() -> str:
     return get_settings().ui_api_key
 
 
-def validate_proxy_api_key(api_key: str | None, *, bypass_enabled: bool = False) -> tuple[bool, str]:
-    if bypass_enabled:
-        if api_key is None:
-            return False, ""
-        return True, hash_api_key(api_key)
+def validate_proxy_api_key(api_key: str | None, *, bypass_enabled: bool = False) -> tuple[bool, str, bool]:
+    """Validate a proxy API key.
+
+    Returns (is_valid, key_hash, is_known_key).
+    is_known_key is True when the key matched a configured api_keys entry;
+    False when accepted only via bypass passthrough.
+    """
+    if api_key is None:
+        if bypass_enabled:
+            return False, "", False
+        configured_keys = _get_configured_api_keys()
+        if not configured_keys:
+            return True, hash_api_key("anonymous"), False
+        return False, "", False
+
+    key_hash = hash_api_key(api_key)
 
     configured_keys = _get_configured_api_keys()
-    if not configured_keys:
-        return True, hash_api_key("anonymous") if api_key is None else hash_api_key(api_key)
-    if api_key is None:
-        return False, ""
-    key_hash = hash_api_key(api_key)
     for configured_key in configured_keys:
         if hash_api_key(configured_key) == key_hash:
-            return True, key_hash
-    return False, ""
+            return True, key_hash, True
+
+    if bypass_enabled:
+        return True, key_hash, False
+
+    if not configured_keys:
+        return True, key_hash, False
+
+    return False, "", False
 
 
 def validate_ui_api_key(api_key: str | None) -> bool:

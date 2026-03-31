@@ -244,9 +244,42 @@ def test_proxy_and_ui_auth(monkeypatch: pytest.MonkeyPatch) -> None:
     assert mask_api_key("short") == "***"
     assert mask_api_key("abcdefghijk") == "abc***hijk"
     assert validate_proxy_api_key("proxy-secret")[0] is True
-    assert validate_proxy_api_key("wrong") == (False, "")
+    assert validate_proxy_api_key("proxy-secret")[2] is True
+    ok, key_hash, is_known = validate_proxy_api_key("wrong")
+    assert (ok, is_known) == (False, False)
     assert validate_ui_api_key("ui-secret") is True
     assert validate_ui_api_key("wrong") is False
+
+
+def test_validate_proxy_api_key_bypass_mode() -> None:
+    ok, key_hash, is_known = validate_proxy_api_key("any-random-key", bypass_enabled=True)
+    assert ok is True
+    assert key_hash == hash_api_key("any-random-key")
+    assert is_known is False
+
+    ok, key_hash, is_known = validate_proxy_api_key(None, bypass_enabled=True)
+    assert ok is False
+    assert key_hash == ""
+    assert is_known is False
+
+
+def test_adapter_build_headers_with_override() -> None:
+    from ai_proxy.adapters.openai_compat import OpenAICompatAdapter
+
+    adapter = OpenAICompatAdapter(
+        provider_name="test",
+        endpoint_url="https://example.com/v1",
+        api_key="default-key",
+    )
+
+    headers_default = adapter._build_headers({})
+    assert headers_default["Authorization"] == "Bearer default-key"
+
+    headers_override = adapter._build_headers({}, override_api_key="override-key")
+    assert headers_override["Authorization"] == "Bearer override-key"
+
+    headers_none = adapter._build_headers({}, override_api_key=None)
+    assert headers_none["Authorization"] == "Bearer default-key"
 
 
 @pytest.mark.asyncio

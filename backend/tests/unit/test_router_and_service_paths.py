@@ -61,7 +61,7 @@ async def test_chat_completions_validation_paths(monkeypatch: pytest.MonkeyPatch
     transport = ASGITransport(app=app)
 
     monkeypatch.setattr(proxy_router, "get_app_config", _default_config)
-    monkeypatch.setattr(proxy_router, "validate_proxy_api_key", lambda _key, **kw: (False, ""))
+    monkeypatch.setattr(proxy_router, "validate_proxy_api_key", lambda _key, **kw: (False, "", False))
 
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         invalid_json = await client.post(
@@ -91,7 +91,7 @@ async def test_chat_completions_route_and_access_failures(monkeypatch: pytest.Mo
     transport = ASGITransport(app=app)
 
     monkeypatch.setattr(proxy_router, "get_app_config", _default_config)
-    monkeypatch.setattr(proxy_router, "validate_proxy_api_key", lambda _key, **kw: (True, "hash"))
+    monkeypatch.setattr(proxy_router, "validate_proxy_api_key", lambda _key, **kw: (True, "hash", True))
 
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         missing_model = await client.post(
@@ -134,11 +134,11 @@ async def test_non_streaming_and_streaming_success_paths(monkeypatch: pytest.Mon
         logged_entries.append(entry)
 
     monkeypatch.setattr(proxy_router, "get_app_config", _default_config)
-    monkeypatch.setattr(proxy_router, "validate_proxy_api_key", lambda _key, **kw: (True, "hash"))
+    monkeypatch.setattr(proxy_router, "validate_proxy_api_key", lambda _key, **kw: (True, "hash", True))
     monkeypatch.setattr(proxy_router, "check_model_access", lambda *_args: (True, ""))
     monkeypatch.setattr(proxy_router, "apply_modifications", lambda body, headers, *_args: (body, headers))
     monkeypatch.setattr(proxy_router, "enqueue_log", capture_log)
-    monkeypatch.setattr(proxy_router, "resolve_provider_key", lambda *_args: None)
+    monkeypatch.setattr(proxy_router, "resolve_provider_key", lambda *_args, **_kw: None)
 
     route = SimpleNamespace(provider_name="provider", mapped_model="mapped-model", adapter=FakeSuccessAdapter())
     monkeypatch.setattr(proxy_router, "resolve_model", lambda _model: route)
@@ -176,7 +176,7 @@ async def test_list_models_and_transport_helpers(monkeypatch: pytest.MonkeyPatch
     app = create_app()
     transport = ASGITransport(app=app)
 
-    monkeypatch.setattr(proxy_router, "validate_proxy_api_key", lambda key, **kw: (bool(key), "hash"))
+    monkeypatch.setattr(proxy_router, "validate_proxy_api_key", lambda key, **kw: (bool(key), "hash", True))
     monkeypatch.setattr(proxy_router, "check_model_access", lambda _hash, model: (model != "blocked-model", "blocked"))
     monkeypatch.setattr(
         proxy_router,
