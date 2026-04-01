@@ -7,9 +7,6 @@ providers:
     type: openai_compatible
     endpoint: https://openrouter.ai/api/v1
     # API key is read from OPENROUTER_API_KEY env var
-    headers:
-      HTTP-Referer: "https://ai-proxy.example.com"
-      X-Title: "AI Proxy v2"
 
 # Model mappings: client-facing model name -> provider:actual_model
 # Explicit entries are visible in /v1/models. The "*" wildcard is a fallback.

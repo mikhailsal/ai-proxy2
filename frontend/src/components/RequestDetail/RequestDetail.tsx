@@ -111,7 +111,7 @@ function RequestDetailMetaRow({
 }) {
   return (
     <div style={styles.metaRow}>
-      <MetaBadge label="Latency" value={request?.latency_ms != null ? `${Math.round(request.latency_ms)}ms` : '-'} />
+      <MetaBadge label="Duration" value={request?.latency_ms != null ? formatDetailDuration(request.latency_ms) : '-'} />
       <MetaBadge label="In" value={String(request?.input_tokens ?? '-')} />
       <MetaBadge label="Out" value={String(request?.output_tokens ?? '-')} />
       <MetaBadge label="Total" value={String(request?.total_tokens ?? '-')} />
@@ -287,6 +287,13 @@ function Section({
       {open && <div style={{ padding: '0 12px 12px' }}>{children}</div>}
     </div>
   );
+}
+
+function formatDetailDuration(ms: number): string {
+  const seconds = ms / 1000;
+  if (seconds < 0.1) return `${Math.round(ms)}ms`;
+  if (seconds < 10) return `${seconds.toFixed(1)}s`;
+  return `${Math.round(seconds)}s`;
 }
 
 function statusBg(code: number | null) {

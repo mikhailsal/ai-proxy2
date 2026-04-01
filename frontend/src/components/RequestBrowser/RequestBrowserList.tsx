@@ -42,7 +42,7 @@ const COLUMN_DEFS: { key: ColKey; label: string; tooltip?: string }[] = [
   { key: 'status', label: 'Status' },
   {
     key: 'latency',
-    label: 'Latency',
+    label: 'Duration',
     tooltip:
       'End-to-end proxy time: from request arrival through auth, routing, ' +
       'full upstream round-trip (or entire stream duration), to response completion.',
@@ -294,7 +294,7 @@ function RequestRow({
         {item.response_status_code ?? '-'}
       </span>
       <span style={{ ...colStyle('latency', colWidths), color: '#8b949e' }}>
-        {item.latency_ms != null ? `${Math.round(item.latency_ms)}ms` : '-'}
+        {item.latency_ms != null ? formatDuration(item.latency_ms) : '-'}
       </span>
       <span style={{ ...colStyle('tokens', colWidths), color: '#8b949e', fontSize: '0.78rem' }}>
         {formatTokens(item)}
@@ -328,19 +328,30 @@ function formatTimestamp(ts: string): string {
   return `${yyyy}-${MM}-${dd} ${hh}:${mm}`;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
+export function formatDuration(ms: number): string {
+  const s = ms / 1000;
+  return s < 0.1 ? `${Math.round(ms)}ms` : s < 10 ? `${s.toFixed(1)}s` : `${Math.round(s)}s`;
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function compactNumber(n: number): string {
+  return n < 1000 ? String(n) : (n / 1000) % 1 === 0 ? `${n / 1000}k` : `${(n / 1000).toFixed(1)}k`;
+}
+
 function formatTokens(item: RequestSummary): string {
   const input = item.input_tokens;
   const output = item.output_tokens;
   const cached = item.cached_input_tokens;
 
-  if (input == null && output == null) return item.total_tokens != null ? String(item.total_tokens) : '-';
+  if (input == null && output == null) return item.total_tokens != null ? compactNumber(item.total_tokens) : '-';
 
   let inputPart = '';
   if (input != null) {
-    inputPart = cached && cached > 0 ? `i${cached}/${input}` : `i${input}`;
+    inputPart = cached && cached > 0 ? `i${compactNumber(cached)}/${compactNumber(input)}` : `i${compactNumber(input)}`;
   }
 
-  const outputPart = output != null ? `o${output}` : '';
+  const outputPart = output != null ? `o${compactNumber(output)}` : '';
 
   return [inputPart, outputPart].filter(Boolean).join(' ');
 }

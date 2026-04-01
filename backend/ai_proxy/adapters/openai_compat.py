@@ -13,16 +13,34 @@ from ai_proxy.types import JsonObject
 logger = structlog.get_logger()
 
 
+_STRIPPED_REQUEST_HEADERS = {
+    "authorization",
+    "content-length",
+    "content-type",
+    "host",
+    "connection",
+    "content-encoding",
+    "keep-alive",
+    "proxy-authenticate",
+    "proxy-authorization",
+    "te",
+    "trailer",
+    "transfer-encoding",
+    "upgrade",
+    "sec-fetch-mode",
+    "sec-fetch-site",
+    "sec-fetch-dest",
+}
+
+
 class OpenAICompatAdapter(BaseAdapter):
     def _build_headers(self, headers: dict[str, str], *, override_api_key: str | None = None) -> dict[str, str]:
-        out = {"Content-Type": "application/json"}
+        out = {k: v for k, v in headers.items() if k.lower() not in _STRIPPED_REQUEST_HEADERS}
+        out["Content-Type"] = "application/json"
         effective_key = override_api_key if override_api_key is not None else self.api_key
         if effective_key:
             out["Authorization"] = f"Bearer {effective_key}"
         out.update(self.extra_headers)
-        for h in ("X-Request-ID", "X-Session-ID"):
-            if h in headers:
-                out[h] = headers[h]
         return out
 
     async def chat_completions(

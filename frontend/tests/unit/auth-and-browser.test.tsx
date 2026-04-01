@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AuthCard } from '../../src/components/Auth/AuthCard';
 import { RequestBrowserToolbar } from '../../src/components/RequestBrowser/RequestBrowserToolbar';
 import { filterRequests, useRequestBrowserData } from '../../src/components/RequestBrowser/requestBrowserData';
-import { RequestBrowserList, formatAssistantCell } from '../../src/components/RequestBrowser/RequestBrowserList';
+import { RequestBrowserList, compactNumber, formatAssistantCell, formatDuration } from '../../src/components/RequestBrowser/RequestBrowserList';
 import type { RequestSummary } from '../../src/types';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -313,6 +313,37 @@ describe('formatAssistantCell', () => {
     expect(result).toContain('b=');
     expect(result).toContain('c=');
     expect(result).toMatch(/\)$/);
+  });
+});
+
+describe('formatDuration', () => {
+  it('shows milliseconds for sub-100ms values', () => {
+    expect(formatDuration(50)).toBe('50ms');
+    expect(formatDuration(99)).toBe('99ms');
+  });
+
+  it('shows one decimal second for values under 10s', () => {
+    expect(formatDuration(200)).toBe('0.2s');
+    expect(formatDuration(1234)).toBe('1.2s');
+    expect(formatDuration(9500)).toBe('9.5s');
+  });
+
+  it('shows rounded seconds for values >= 10s', () => {
+    expect(formatDuration(10000)).toBe('10s');
+    expect(formatDuration(45678)).toBe('46s');
+  });
+});
+
+describe('compactNumber', () => {
+  it('returns raw number below 1000', () => {
+    expect(compactNumber(0)).toBe('0');
+    expect(compactNumber(999)).toBe('999');
+  });
+
+  it('returns k notation for 1000+', () => {
+    expect(compactNumber(1000)).toBe('1k');
+    expect(compactNumber(1200)).toBe('1.2k');
+    expect(compactNumber(12345)).toBe('12.3k');
   });
 });
 

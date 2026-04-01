@@ -14,7 +14,7 @@ export function StatsBar() {
   return (
     <div style={styles.bar}>
       <Stat label="Requests" value={data.total_requests.toLocaleString()} />
-      <Stat label="Avg Latency" value={`${data.avg_latency_ms}ms`} />
+      <Stat label="Avg Duration" value={`${(data.avg_latency_ms / 1000).toFixed(1)}s`} />
       <Stat label="Tokens" value={data.total_tokens.toLocaleString()} />
     </div>
   );

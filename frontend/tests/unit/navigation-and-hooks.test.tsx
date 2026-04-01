@@ -127,7 +127,7 @@ describe('useApi and StatsBar', () => {
     );
 
     await waitFor(() => expect(screen.getByText('1,234')).toBeInTheDocument());
-    expect(screen.getByText('87ms')).toBeInTheDocument();
+    expect(screen.getByText('0.1s')).toBeInTheDocument();
     expect(screen.getByText('4,567')).toBeInTheDocument();
   });
 
