@@ -227,10 +227,13 @@ async def _handle_non_streaming(
             request=request,
             request_id=request_id,
             forward_body=forward_body,
+            forward_headers=forward_headers,
             route=route,
             model_requested=model_requested,
             key_hash=key_hash,
             start_time=start_time,
+            override_api_key=override_api_key,
+            client_request_body=client_request_body,
         )
 
     response_body = upstream_response.parsed_body()
@@ -285,12 +288,39 @@ async def _handle_streaming(
             request=request,
             request_id=request_id,
             forward_body=forward_body,
+            forward_headers=forward_headers,
             route=route,
             model_requested=model_requested,
             key_hash=key_hash,
             start_time=start_time,
+            override_api_key=override_api_key,
+            client_request_body=client_request_body,
         )
 
+    return await _finalize_stream(
+        request,
+        request_id,
+        key_hash,
+        upstream_stream,
+        forward_body,
+        route,
+        model_requested,
+        start_time,
+        client_request_body,
+    )
+
+
+async def _finalize_stream(
+    request: Request,
+    request_id: uuid.UUID,
+    key_hash: str,
+    upstream_stream: Any,
+    forward_body: JsonObject,
+    route: RouteResult,
+    model_requested: str,
+    start_time: float,
+    client_request_body: JsonObject | None,
+) -> Response | StreamingResponse:
     if upstream_stream.error_body is not None:
         return await stream_error_response(
             request=request,
@@ -351,21 +381,28 @@ async def _transport_error_response(
     request: Request,
     request_id: uuid.UUID,
     forward_body: JsonObject,
+    forward_headers: dict[str, str],
     route: RouteResult,
     model_requested: str,
     key_hash: str,
     start_time: float,
+    override_api_key: str | None = None,
+    client_request_body: JsonObject | None = None,
 ) -> JSONResponse:
     latency = (time.monotonic() - start_time) * 1000
     response_status_code = _transport_error_status(error)
     error_message = str(error)
     logger.error(log_event, error=error_message, provider=route.provider_name)
+    build_fn = getattr(route.adapter, "_build_headers", None)
+    sent_headers = build_fn(forward_headers, override_api_key=override_api_key) if build_fn else forward_headers
     await enqueue_log(
         LogEntry.from_proxy_context(
             entry_id=request_id,
             request=request,
             client_api_key_hash=key_hash,
+            request_headers=sent_headers,
             request_body=forward_body,
+            client_request_body=client_request_body,
             model_requested=model_requested,
             model_resolved=route.mapped_model,
             provider_name=route.provider_name,

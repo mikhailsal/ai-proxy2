@@ -16,6 +16,13 @@ class FakeAdapter:
         self._response = response
         self._error = error
 
+    def _build_headers(self, headers: dict[str, str], *, override_api_key: str | None = None) -> dict[str, str]:
+        out = dict(headers)
+        out["Content-Type"] = "application/json"
+        if override_api_key:
+            out["Authorization"] = f"Bearer {override_api_key}"
+        return out
+
     async def chat_completions(
         self, request_body: dict[str, Any], headers: dict[str, str], *, override_api_key: str | None = None
     ) -> ProviderResponse:
@@ -110,5 +117,10 @@ async def test_non_streaming_transport_errors_become_gateway_failures(
 
     assert response.status_code == 502
     assert response.json() == {"error": {"message": "Provider transport error: boom"}}
-    assert logged_entries[0].response_status_code == 502
-    assert logged_entries[0].error_message == "boom"
+    entry = logged_entries[0]
+    assert entry.response_status_code == 502
+    assert entry.error_message == "boom"
+    assert entry.request_headers is not None
+    assert entry.request_headers["Content-Type"] == "application/json"
+    assert entry.client_request_body is not None
+    assert entry.client_request_body["model"] == "gpt-4o-mini"
