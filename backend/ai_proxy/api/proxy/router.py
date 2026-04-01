@@ -395,6 +395,8 @@ async def _transport_error_response(
     logger.error(log_event, error=error_message, provider=route.provider_name)
     build_fn = getattr(route.adapter, "_build_headers", None)
     sent_headers = build_fn(forward_headers, override_api_key=override_api_key) if build_fn else forward_headers
+    client_body: JsonObject = {"error": {"message": f"Provider transport error: {error_message}"}}
+    client_headers = {"content-type": "application/json"}
     await enqueue_log(
         LogEntry.from_proxy_context(
             entry_id=request_id,
@@ -408,13 +410,12 @@ async def _transport_error_response(
             provider_name=route.provider_name,
             latency_ms=latency,
             response_status_code=response_status_code,
+            client_response_body=client_body,
+            client_response_headers=client_headers,
             error_message=error_message,
         )
     )
-    return JSONResponse(
-        {"error": {"message": f"Provider transport error: {error_message}"}},
-        status_code=response_status_code,
-    )
+    return JSONResponse(client_body, status_code=response_status_code)
 
 
 async def _enqueue_non_streaming_log(

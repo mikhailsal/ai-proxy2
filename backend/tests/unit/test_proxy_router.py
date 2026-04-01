@@ -124,3 +124,5 @@ async def test_non_streaming_transport_errors_become_gateway_failures(
     assert entry.request_headers["Content-Type"] == "application/json"
     assert entry.client_request_body is not None
     assert entry.client_request_body["model"] == "gpt-4o-mini"
+    assert entry.client_response_body == {"error": {"message": "Provider transport error: boom"}}
+    assert entry.client_response_headers == {"content-type": "application/json"}
