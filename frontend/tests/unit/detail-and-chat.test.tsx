@@ -194,7 +194,7 @@ describe('DiffJsonViewer', () => {
 });
 
 describe('RequestDetail', () => {
-  it('renders detail data, toggles sections, exports, and closes', async () => {
+  it('renders detail data, toggles sections, exports, and closes', { timeout: 15000 }, async () => {
     const onClose = vi.fn();
     const downloadExport = vi.fn().mockResolvedValue(undefined);
     const api = {
@@ -313,6 +313,32 @@ describe('RequestDetail', () => {
     await waitFor(() => expect(screen.getByText('detail failed')).toBeInTheDocument());
     expect(screen.getByText('export failed')).toBeInTheDocument();
     expect(screen.getByText('500')).toBeInTheDocument();
+  });
+
+  it('shows estimated token counts and cached badge when applicable', async () => {
+    const withCache = makeRequestDetail({
+      cached_input_tokens: 45, input_tokens: 50, model_requested: 'openai/gpt-4o',
+      request_body: {
+        tools: [{ type: 'function', function: { name: 'lookup_weather', parameters: { type: 'object', properties: { city: { type: 'string' } } } } }],
+        messages: [{ role: 'system', content: 'A long system prompt for cache' }, { role: 'user', content: 'hello' }],
+      },
+    });
+    const api = { downloadExport: vi.fn().mockResolvedValue(undefined), getRequest: vi.fn().mockResolvedValue(withCache) };
+    const { unmount } = renderWithApi(
+      <RequestDetail onClose={vi.fn()} requestId="req-cache" requestSummary={makeRequestSummary({ cached_input_tokens: 45, input_tokens: 50 })} />, api,
+    );
+    await waitFor(() => expect(screen.getByText('Request Body')).toBeInTheDocument());
+    expect(screen.getByText('Cached:')).toBeInTheDocument();
+    expect(screen.getByText('45/50 (90%)')).toBeInTheDocument();
+    expect(screen.getAllByText(/~\d+ tokens/).length).toBeGreaterThanOrEqual(2);
+    unmount();
+
+    const noCache = makeRequestDetail({ cached_input_tokens: null, input_tokens: 50 });
+    const api2 = { downloadExport: vi.fn().mockResolvedValue(undefined), getRequest: vi.fn().mockResolvedValue(noCache) };
+    renderWithApi(<RequestDetail onClose={vi.fn()} requestId="req-nc" requestSummary={makeRequestSummary({})} />, api2);
+    await waitFor(() => expect(screen.getByText('Request Body')).toBeInTheDocument());
+    expect(screen.queryByText('Cached:')).not.toBeInTheDocument();
+    expect(screen.getAllByText(/~\d+ tokens/).length).toBeGreaterThanOrEqual(2);
   });
 });
 

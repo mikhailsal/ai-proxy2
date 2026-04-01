@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useApi } from '../../hooks/useApi';
+import type { HighlightRule } from '../JsonViewer/JsonViewer';
 import { JsonViewer } from '../JsonViewer/JsonViewer';
 import { DiffJsonViewer } from '../JsonViewer/DiffJsonViewer';
 import type { RequestDetail as RequestDetailType, RequestSummary } from '../../types';
+import { countTokens, selectEncoding } from '../../utils/cacheBoundary';
 
 interface RequestDetailProps {
   requestId: string;
@@ -109,12 +111,19 @@ function RequestDetailMetaRow({
 }: {
   request: RequestSummary | RequestDetailType | null;
 }) {
+  const cachedTokens = request?.cached_input_tokens;
+  const inputTokens = request?.input_tokens;
+  const cachedDisplay = cachedTokens != null && cachedTokens > 0 && inputTokens != null && inputTokens > 0
+    ? `${cachedTokens}/${inputTokens} (${Math.round((cachedTokens / inputTokens) * 100)}%)`
+    : null;
+
   return (
     <div style={styles.metaRow}>
       <MetaBadge label="Duration" value={request?.latency_ms != null ? formatDetailDuration(request.latency_ms) : '-'} />
       <MetaBadge label="In" value={String(request?.input_tokens ?? '-')} />
       <MetaBadge label="Out" value={String(request?.output_tokens ?? '-')} />
       <MetaBadge label="Total" value={String(request?.total_tokens ?? '-')} />
+      {cachedDisplay ? <MetaBadge label="Cached" value={cachedDisplay} highlight /> : null}
       {request?.cost != null ? <MetaBadge label="Cost" value={`$${request.cost.toFixed(6)}`} /> : null}
       {request?.cache_status ? <MetaBadge label="Cache" value={request.cache_status} /> : null}
       <MetaBadge label="Time" value={request ? new Date(request.timestamp).toLocaleString() : '-'} />
@@ -126,15 +135,15 @@ function hasDiff(a: unknown, b: unknown): boolean {
   return a != null && b != null && JSON.stringify(a) !== JSON.stringify(b);
 }
 
-function DiffOrPlainSection({ client, provider, title, diffTitle, collapsed = false, collapsedPaths = [], expandedPaths = [] }: {
+function DiffOrPlainSection({ client, provider, title, diffTitle, collapsed = false, collapsedPaths = [], expandedPaths = [], highlightRules = [] }: {
   client: unknown; provider: unknown; title: string; diffTitle: string; collapsed?: boolean;
-  collapsedPaths?: string[]; expandedPaths?: string[];
+  collapsedPaths?: string[]; expandedPaths?: string[]; highlightRules?: HighlightRule[];
 }) {
   if (hasDiff(client, provider)) {
     return <DiffSection left={client} right={provider} title={diffTitle} />;
   }
   const data = provider ?? client;
-  return data ? <JsonSection data={data} title={title} collapsed={collapsed} collapsedPaths={collapsedPaths} expandedPaths={expandedPaths} /> : null;
+  return data ? <JsonSection data={data} title={title} collapsed={collapsed} collapsedPaths={collapsedPaths} expandedPaths={expandedPaths} highlightRules={highlightRules} /> : null;
 }
 
 function responseBodyCollapsedPaths(body: Record<string, unknown> | null): string[] {
@@ -163,6 +172,8 @@ function RequestDetailBody({
   data: RequestDetailType | undefined;
   isLoading: boolean;
 }) {
+  const tokenEstimateRules = useMemo(() => buildTokenEstimateRules(data), [data]);
+
   if (isLoading) return <div style={styles.loading}>Loading detail…</div>;
   if (!data) return null;
 
@@ -180,6 +191,7 @@ function RequestDetailBody({
         client={data.client_request_body} provider={data.request_body}
         title="Request Body" diffTitle="Request Body (Client → Provider)"
         collapsedPaths={reqPaths.collapsed} expandedPaths={reqPaths.expanded}
+        highlightRules={tokenEstimateRules}
       />
       {data.stream_chunks && data.stream_chunks.length > 0 ? (
         <JsonSection data={data.stream_chunks} title={`Stream Chunks (${data.stream_chunks.length})`} collapsed />
@@ -207,17 +219,19 @@ function JsonSection({
   collapsed = false,
   collapsedPaths = [],
   expandedPaths = [],
+  highlightRules = [],
 }: {
   data: unknown;
   title: string;
   collapsed?: boolean;
   collapsedPaths?: string[];
   expandedPaths?: string[];
+  highlightRules?: HighlightRule[];
 }) {
   return (
     <Section title={title} collapsed={collapsed}>
       <pre style={styles.pre}>
-        <JsonViewer data={data} collapsedPaths={collapsedPaths} expandedPaths={expandedPaths} />
+        <JsonViewer data={data} collapsedPaths={collapsedPaths} expandedPaths={expandedPaths} highlightRules={highlightRules} />
       </pre>
     </Section>
   );
@@ -254,10 +268,13 @@ function DiffSection({
   );
 }
 
-function MetaBadge({ label, value }: { label: string; value: string }) {
+function MetaBadge({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
   return (
-    <span style={{ display: 'flex', gap: 4, alignItems: 'center', fontSize: '0.77rem' }}>
-      <span style={{ color: '#8b949e' }}>{label}:</span>
+    <span style={{
+      display: 'flex', gap: 4, alignItems: 'center', fontSize: '0.77rem',
+      ...(highlight ? { background: 'rgba(187, 128, 9, 0.15)', borderRadius: 4, padding: '1px 6px' } : {}),
+    }}>
+      <span style={{ color: highlight ? '#ffa657' : '#8b949e' }}>{label}:</span>
       <span style={{ color: '#e6edf3', fontWeight: 500 }}>{value}</span>
     </span>
   );
@@ -294,6 +311,88 @@ function formatDetailDuration(ms: number): string {
   if (seconds < 0.1) return `${Math.round(ms)}ms`;
   if (seconds < 10) return `${seconds.toFixed(1)}s`;
   return `${Math.round(seconds)}s`;
+}
+
+function formatTokenEstimate(count: number): string {
+  if (count >= 1000) return `~${(count / 1000).toFixed(1)}k tokens`;
+  return `~${count} tokens`;
+}
+
+function messageToText(msg: Record<string, unknown>): string {
+  const parts: string[] = [];
+  if (typeof msg.role === 'string') parts.push(msg.role);
+  if (typeof msg.name === 'string') parts.push(msg.name);
+  const content = msg.content;
+  if (typeof content === 'string') {
+    parts.push(content);
+  } else if (Array.isArray(content)) {
+    for (const part of content) {
+      if (typeof part === 'object' && part !== null && (part as Record<string, unknown>).type === 'text') {
+        const text = (part as Record<string, unknown>).text;
+        if (typeof text === 'string') parts.push(text);
+      }
+    }
+  }
+  if (Array.isArray(msg.tool_calls)) {
+    parts.push(JSON.stringify(msg.tool_calls));
+  }
+  return parts.join('\n');
+}
+
+function buildTokenEstimateRules(data: RequestDetailType | undefined): HighlightRule[] {
+  if (!data) return [];
+
+  const body = data.request_body ?? data.client_request_body;
+  if (!body || typeof body !== 'object') return [];
+
+  const model = data.model_requested ?? '';
+  const encoding = selectEncoding(model);
+  const actualInputTokens = data.input_tokens ?? 0;
+
+  const rawToolEstimates: number[] = [];
+  const rawMsgEstimates: number[] = [];
+
+  const tools = (body as Record<string, unknown>).tools;
+  if (Array.isArray(tools)) {
+    for (const tool of tools) {
+      rawToolEstimates.push(countTokens(JSON.stringify(tool), encoding));
+    }
+  }
+
+  const messages = (body as Record<string, unknown>).messages;
+  if (Array.isArray(messages)) {
+    for (const m of messages) {
+      const msg = m as Record<string, unknown>;
+      rawMsgEstimates.push(countTokens(messageToText(msg), encoding) + 4);
+    }
+  }
+
+  const rawTotal = rawToolEstimates.reduce((s, v) => s + v, 0) + rawMsgEstimates.reduce((s, v) => s + v, 0);
+  const scale = rawTotal > 0 && actualInputTokens > 0 ? actualInputTokens / rawTotal : 1;
+
+  const rules: HighlightRule[] = [];
+
+  if (rawToolEstimates.length > 0) {
+    let toolsTotal = 0;
+    for (let i = 0; i < rawToolEstimates.length; i++) {
+      const calibrated = Math.round(rawToolEstimates[i] * scale);
+      toolsTotal += calibrated;
+      rules.push({ path: `tools.${i}`, label: formatTokenEstimate(calibrated) });
+    }
+    rules.push({ path: 'tools', label: formatTokenEstimate(toolsTotal) });
+  }
+
+  if (rawMsgEstimates.length > 0) {
+    let msgsTotal = 0;
+    for (let i = 0; i < rawMsgEstimates.length; i++) {
+      const calibrated = Math.round(rawMsgEstimates[i] * scale);
+      msgsTotal += calibrated;
+      rules.push({ path: `messages.${i}`, label: formatTokenEstimate(calibrated) });
+    }
+    rules.push({ path: 'messages', label: formatTokenEstimate(msgsTotal) });
+  }
+
+  return rules;
 }
 
 function statusBg(code: number | null) {
