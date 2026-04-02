@@ -7,7 +7,9 @@ providers:
     type: openai_compatible
     endpoint: https://openrouter.ai/api/v1
     # API key is read from OPENROUTER_API_KEY env var
-
+  omniroute:
+    type: openai_compatible
+    endpoint: http://omniroute:20128/v1
 # Model mappings: client-facing model name -> provider:actual_model
 # Explicit entries are visible in /v1/models. The "*" wildcard is a fallback.
 model_mappings:
@@ -93,6 +95,8 @@ model_mappings:
   # OpenRouter
   "openrouter/hunter-alpha": "openrouter:openrouter/hunter-alpha"
   "openrouter/healer-alpha": "openrouter:openrouter/healer-alpha"
+  # OmniRoute (via NVIDIA NIM)
+  "nvidia/z-ai/glm4.7": "omniroute:nvidia/z-ai/glm4.7"
 
 # ── Bypass mode ─────────────────────────────────────────────────────
 # When enabled, clients who are NOT in the api_keys list can still use
