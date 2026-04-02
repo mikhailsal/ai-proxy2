@@ -10,9 +10,10 @@ const DEFAULT_COL_WIDTHS = {
   status: 46,
   latency: 64,
   tokens: 90,
+  tps: 48,
   cost: 56,
-  userMsg: 200,
-  assistantMsg: 250,
+  userMsg: 170,
+  assistantMsg: 230,
 };
 
 type ColKey = keyof typeof DEFAULT_COL_WIDTHS;
@@ -48,6 +49,11 @@ const COLUMN_DEFS: { key: ColKey; label: string; tooltip?: string }[] = [
       'full upstream round-trip (or entire stream duration), to response completion.',
   },
   { key: 'tokens', label: 'Tokens' },
+  {
+    key: 'tps',
+    label: 'TPS',
+    tooltip: 'Tokens per second: output tokens divided by request duration.',
+  },
   { key: 'cost', label: 'Cost' },
   { key: 'userMsg', label: 'User Message' },
   { key: 'assistantMsg', label: 'Assistant' },
@@ -216,8 +222,10 @@ function ColResizer({
   );
 }
 
+const SHRINKABLE_COLS: ReadonlySet<ColKey> = new Set(['userMsg', 'assistantMsg']);
+
 function colStyle(key: ColKey, widths: typeof DEFAULT_COL_WIDTHS): React.CSSProperties {
-  return { width: widths[key], flexShrink: 0, overflow: 'hidden' };
+  return { width: widths[key], minWidth: SHRINKABLE_COLS.has(key) ? 60 : undefined, flexShrink: SHRINKABLE_COLS.has(key) ? 1 : 0, overflow: 'hidden' };
 }
 
 function loadNextPage(
@@ -259,59 +267,36 @@ function LoadMoreRow({
   );
 }
 
-function RequestRow({
-  colWidths,
-  item,
-  isSelected,
-  onSelect,
-  virtualRow,
-}: {
+function RequestRow({ colWidths, item, isSelected, onSelect, virtualRow }: {
   colWidths: typeof DEFAULT_COL_WIDTHS;
   item: RequestSummary;
   isSelected: boolean;
   onSelect: (request: RequestSummary) => void;
   virtualRow: { size: number; start: number };
 }) {
+  const dim: React.CSSProperties = { color: '#8b949e', fontSize: '0.78rem' };
+  const rowStyle: React.CSSProperties = {
+    ...styles.row, position: 'absolute', top: virtualRow.start, height: virtualRow.size,
+    background: isSelected ? '#21262d' : 'transparent',
+    borderLeft: isSelected ? '2px solid #58a6ff' : '2px solid transparent',
+  };
   return (
-    <div
-      style={{
-        ...styles.row,
-        position: 'absolute',
-        top: virtualRow.start,
-        height: virtualRow.size,
-        background: isSelected ? '#21262d' : 'transparent',
-        borderLeft: isSelected ? '2px solid #58a6ff' : '2px solid transparent',
-      }}
-      onClick={() => onSelect(item)}
-    >
-      <span style={{ ...colStyle('timestamp', colWidths), color: '#8b949e', fontSize: '0.78rem' }}>
-        {formatTimestamp(item.timestamp)}
-      </span>
-      <span style={{ ...colStyle('model', colWidths), ...styles.ellipsis }}>
-        {item.model_requested ?? '-'}
-      </span>
+    <div style={rowStyle} onClick={() => onSelect(item)}>
+      <span style={{ ...colStyle('timestamp', colWidths), ...dim }}>{formatTimestamp(item.timestamp)}</span>
+      <span style={{ ...colStyle('model', colWidths), ...styles.ellipsis }}>{item.model_requested ?? '-'}</span>
       <span style={{ ...colStyle('status', colWidths), color: statusColor(item.response_status_code) }}>
         {item.response_status_code ?? '-'}
       </span>
       <span style={{ ...colStyle('latency', colWidths), color: '#8b949e' }}>
         {item.latency_ms != null ? formatDuration(item.latency_ms) : '-'}
       </span>
-      <span style={{ ...colStyle('tokens', colWidths), color: '#8b949e', fontSize: '0.78rem' }}>
-        {formatTokens(item)}
-      </span>
-      <span style={{ ...colStyle('cost', colWidths), color: '#8b949e', fontSize: '0.78rem' }}>
-        {formatCost(item.cost)}
-      </span>
-      <span
-        style={{ ...colStyle('userMsg', colWidths), ...styles.ellipsis, color: '#8b949e', fontSize: '0.78rem' }}
-        title={item.last_user_message ?? undefined}
-      >
+      <span style={{ ...colStyle('tokens', colWidths), ...dim }}>{formatTokens(item)}</span>
+      <span style={{ ...colStyle('tps', colWidths), ...dim }}>{formatTps(item)}</span>
+      <span style={{ ...colStyle('cost', colWidths), ...dim }}>{formatCost(item.cost)}</span>
+      <span style={{ ...colStyle('userMsg', colWidths), ...styles.ellipsis, ...dim }} title={item.last_user_message ?? undefined}>
         {item.last_user_message ?? '-'}
       </span>
-      <span
-        style={{ ...colStyle('assistantMsg', colWidths), ...styles.ellipsis, color: '#8b949e', fontSize: '0.78rem' }}
-        title={item.assistant_response ?? undefined}
-      >
+      <span style={{ ...colStyle('assistantMsg', colWidths), ...styles.ellipsis, ...dim }} title={item.assistant_response ?? undefined}>
         {formatAssistantCell(item.assistant_response, colWidths.assistantMsg)}
       </span>
     </div>
@@ -354,6 +339,15 @@ function formatTokens(item: RequestSummary): string {
   const outputPart = output != null ? `o${compactNumber(output)}` : '';
 
   return [inputPart, outputPart].filter(Boolean).join(' ');
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function formatTps(item: RequestSummary): string {
+  const tokens = item.output_tokens;
+  const ms = item.latency_ms;
+  if (tokens == null || tokens === 0 || ms == null || ms <= 0) return '-';
+  const tps = tokens / (ms / 1000);
+  return tps < 10 ? tps.toFixed(1) : Math.round(tps).toString();
 }
 
 const TOOL_CALL_RE = /^(.+?)\((.+)\)$/s;

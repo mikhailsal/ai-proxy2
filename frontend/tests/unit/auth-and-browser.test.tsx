@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AuthCard } from '../../src/components/Auth/AuthCard';
 import { RequestBrowserToolbar } from '../../src/components/RequestBrowser/RequestBrowserToolbar';
 import { filterRequests, useRequestBrowserData } from '../../src/components/RequestBrowser/requestBrowserData';
-import { RequestBrowserList, compactNumber, formatAssistantCell, formatDuration } from '../../src/components/RequestBrowser/RequestBrowserList';
+import { RequestBrowserList, compactNumber, formatAssistantCell, formatDuration, formatTps } from '../../src/components/RequestBrowser/RequestBrowserList';
 import type { RequestSummary } from '../../src/types';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -347,6 +347,36 @@ describe('compactNumber', () => {
   });
 });
 
+describe('formatTps', () => {
+  it('returns dash when output_tokens is missing', () => {
+    expect(formatTps(makeRequestSummary({ output_tokens: null, latency_ms: 1000 }))).toBe('-');
+  });
+
+  it('returns dash when latency_ms is missing', () => {
+    expect(formatTps(makeRequestSummary({ output_tokens: 100, latency_ms: null }))).toBe('-');
+  });
+
+  it('returns dash when output_tokens is zero', () => {
+    expect(formatTps(makeRequestSummary({ output_tokens: 0, latency_ms: 1000 }))).toBe('-');
+  });
+
+  it('calculates TPS correctly for slow generation', () => {
+    expect(formatTps(makeRequestSummary({ output_tokens: 5, latency_ms: 1000 }))).toBe('5.0');
+  });
+
+  it('calculates TPS correctly for fast generation', () => {
+    expect(formatTps(makeRequestSummary({ output_tokens: 500, latency_ms: 2000 }))).toBe('250');
+  });
+
+  it('shows one decimal for TPS under 10', () => {
+    expect(formatTps(makeRequestSummary({ output_tokens: 15, latency_ms: 2000 }))).toBe('7.5');
+  });
+
+  it('rounds for TPS >= 10', () => {
+    expect(formatTps(makeRequestSummary({ output_tokens: 100, latency_ms: 1000 }))).toBe('100');
+  });
+});
+
 function makeRequestSummary(overrides: Partial<RequestSummary>): RequestSummary {
   return {
     id: overrides.id ?? 'req-1',
@@ -358,9 +388,9 @@ function makeRequestSummary(overrides: Partial<RequestSummary>): RequestSummary 
     model_requested: overrides.model_requested ?? 'gpt-4o-mini',
     model_resolved: overrides.model_resolved === undefined ? 'gpt-4o-mini' : overrides.model_resolved,
     response_status_code: overrides.response_status_code ?? 200,
-    latency_ms: overrides.latency_ms ?? 42,
-    input_tokens: 1,
-    output_tokens: 2,
+    latency_ms: 'latency_ms' in overrides ? overrides.latency_ms! : 42,
+    input_tokens: 'input_tokens' in overrides ? overrides.input_tokens! : 1,
+    output_tokens: 'output_tokens' in overrides ? overrides.output_tokens! : 2,
     total_tokens: overrides.total_tokens ?? 3,
     cached_input_tokens: null,
     cost: null,
