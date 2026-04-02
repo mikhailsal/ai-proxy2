@@ -15,6 +15,7 @@ from ai_proxy.api.ui.export import router as export_router
 from ai_proxy.api.ui.requests import router as requests_router
 from ai_proxy.config.loader import load_config
 from ai_proxy.config.settings import get_settings
+from ai_proxy.config.watcher import start_watcher, stop_watcher
 from ai_proxy.db.engine import dispose_engine, init_engine
 from ai_proxy.logging.service import start_logging_service, stop_logging_service
 
@@ -44,9 +45,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     )
     logger.info("logging_service_started")
 
+    # Watch config files for changes and hot-reload automatically
+    start_watcher(settings.config_path, secrets_path=settings.secrets_path)
+
     yield
 
     # Shutdown
+    await stop_watcher()
     await stop_logging_service()
     await dispose_engine()
     logger.info("shutdown_complete")

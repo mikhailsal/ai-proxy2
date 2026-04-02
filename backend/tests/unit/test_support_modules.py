@@ -38,6 +38,7 @@ def test_settings_cache_and_helpers(monkeypatch: pytest.MonkeyPatch, tmp_path: P
 
     assert settings.get_api_keys() == ["one", "two", "three"]
     assert settings.get_config_path() == tmp_path / "config.yml"
+    assert str(settings.get_secrets_path()) == "config.secrets.yml"
 
     reset_settings()
     assert get_settings() is not settings
