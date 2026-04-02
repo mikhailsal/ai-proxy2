@@ -44,8 +44,11 @@ def _extract_api_key(request: Request) -> str | None:
     return None
 
 
-def _proxy_response_headers(headers: dict[str, str]) -> dict[str, str]:
-    return {key: value for key, value in headers.items() if key.lower() not in HOP_BY_HOP_HEADERS}
+def _proxy_response_headers(headers: dict[str, str], *, json_body: bool = False) -> dict[str, str]:
+    out = {key: value for key, value in headers.items() if key.lower() not in HOP_BY_HOP_HEADERS}
+    if json_body:
+        out["content-type"] = "application/json"
+    return out
 
 
 def _transport_error_status(error: httpx.RequestError) -> int:
@@ -237,7 +240,8 @@ async def _handle_non_streaming(
         )
 
     response_body = upstream_response.parsed_body()
-    client_response_headers = _proxy_response_headers(upstream_response.headers)
+    is_json = isinstance(response_body, dict) and "raw_text" not in response_body
+    client_response_headers = _proxy_response_headers(upstream_response.headers, json_body=is_json)
     input_tokens, output_tokens, total_tokens = _extract_usage(response_body)
     await _enqueue_non_streaming_log(
         request=request,

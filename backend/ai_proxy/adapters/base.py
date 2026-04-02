@@ -15,13 +15,10 @@ def _parse_body(body: bytes, content_type: str | None) -> JsonValue | dict[str, 
     if not body:
         return None
 
-    if content_type and "json" in content_type.lower():
-        try:
-            return cast("JsonValue", json.loads(body))
-        except json.JSONDecodeError:
-            return {"raw_text": body.decode("utf-8", errors="replace")}
-
-    return {"raw_text": body.decode("utf-8", errors="replace")}
+    try:
+        return cast("JsonValue", json.loads(body))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return {"raw_text": body.decode("utf-8", errors="replace")}
 
 
 @dataclass(frozen=True)

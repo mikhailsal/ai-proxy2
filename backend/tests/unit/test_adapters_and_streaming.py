@@ -45,6 +45,8 @@ def test_parse_body_and_provider_response_helpers() -> None:
     assert _parse_body(b'{"ok":true}', "application/json") == {"ok": True}
     assert _parse_body(b"not-json", "application/json") == {"raw_text": "not-json"}
     assert _parse_body(b"plain-text", "text/plain") == {"raw_text": "plain-text"}
+    assert _parse_body(b'{"ok":true}', "text/event-stream") == {"ok": True}
+    assert _parse_body(b'{"ok":true}', None) == {"ok": True}
 
     response = ProviderResponse(status_code=200, headers={}, body=b'{"ok":true}', content_type="application/json")
     stream = ProviderStreamResponse(status_code=400, headers={}, error_body=b"plain", content_type="text/plain")
@@ -200,7 +202,7 @@ async def test_openai_compat_streaming_error(monkeypatch: pytest.MonkeyPatch) ->
 
     assert error_response.error_body == b'{"error":{"message":"rate limited"}}'
     assert error_response.sent_request_headers == {"Content-Type": "application/json"}
-    assert error_response.parsed_error_body() == {"raw_text": '{"error":{"message":"rate limited"}}'}
+    assert error_response.parsed_error_body() == {"error": {"message": "rate limited"}}
 
 
 @pytest.mark.asyncio
