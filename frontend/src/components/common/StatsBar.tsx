@@ -59,6 +59,6 @@ const styles: Record<string, React.CSSProperties> = {
   label: { color: '#8b949e' },
   value: { color: '#e6edf3', fontWeight: 500 },
   refreshLabel: { display: 'flex', alignItems: 'center', gap: 3, cursor: 'pointer' },
-  refreshIcon: { color: '#484f58', fontSize: '0.85rem' },
-  refreshSelect: { background: 'transparent', border: 'none', color: '#484f58', fontSize: '0.72rem', cursor: 'pointer', outline: 'none', padding: 0 },
+  refreshIcon: { color: '#8b949e', fontSize: '0.85rem' },
+  refreshSelect: { background: 'transparent', border: 'none', color: '#8b949e', fontSize: '0.75rem', cursor: 'pointer', outline: 'none', padding: 0 },
 };
