@@ -5,6 +5,7 @@ import type { ApiClient } from './api/client';
 import { ConnectedApp } from './app/ConnectedApp';
 import { AuthPage } from './components/Auth/AuthPage';
 import { ApiContext } from './hooks/useApi';
+import { AutoRefreshProvider } from './hooks/useAutoRefresh';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -39,7 +40,9 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <ApiContext.Provider value={client}>
-        <ConnectedApp onDisconnect={handleDisconnect} />
+        <AutoRefreshProvider>
+          <ConnectedApp onDisconnect={handleDisconnect} />
+        </AutoRefreshProvider>
       </ApiContext.Provider>
     </QueryClientProvider>
   );

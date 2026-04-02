@@ -1,5 +1,6 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
 import type { ApiClient } from '../../api/client';
+import { useAutoRefresh } from '../../hooks/autoRefreshContext';
 import type { RequestSummary } from '../../types';
 
 interface UseRequestBrowserDataResult {
@@ -15,12 +16,15 @@ export function useRequestBrowserData(
   searchQuery: string,
   modelFilter: string,
 ): UseRequestBrowserDataResult {
+  const { refetchInterval } = useAutoRefresh();
+
   const requestsQuery = useInfiniteQuery({
     queryKey: ['requests'],
     queryFn: ({ pageParam }: { pageParam: string | undefined }) =>
       api.listRequests({ cursor: pageParam, limit: 50 }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: last => last.next_cursor ?? undefined,
+    refetchInterval,
   });
 
   const searchResultsQuery = useInfiniteQuery({
@@ -29,6 +33,7 @@ export function useRequestBrowserData(
     initialPageParam: undefined,
     getNextPageParam: () => undefined,
     enabled: searchQuery.length > 0,
+    refetchInterval,
   });
 
   const baseItems = searchQuery

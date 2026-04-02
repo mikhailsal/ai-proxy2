@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { ChatGroupBy } from '../../app/navigation';
 import { useApi } from '../../hooks/useApi';
+import { useAutoRefresh } from '../../hooks/autoRefreshContext';
 import type { Conversation, ConversationMessage, RequestDetail } from '../../types';
 import { JsonViewer } from '../JsonViewer/JsonViewer';
 
@@ -19,10 +20,12 @@ export function ChatView({
   onSelectGroup,
 }: ChatViewProps) {
   const api = useApi();
+  const { refetchInterval } = useAutoRefresh();
 
   const { data: conversations, isLoading } = useQuery({
     queryKey: ['conversations', groupBy],
     queryFn: () => api.getConversations({ group_by: groupBy, limit: 100 }),
+    refetchInterval,
   });
 
   const { data: messages } = useQuery({
