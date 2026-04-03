@@ -6,6 +6,7 @@ import { JsonViewer } from '../JsonViewer/JsonViewer';
 import { DiffJsonViewer } from '../JsonViewer/DiffJsonViewer';
 import type { RequestDetail as RequestDetailType, RequestSummary } from '../../types';
 import { countTokens, selectEncoding } from '../../utils/cacheBoundary';
+import { tpsColor, durationColor, costColor, cacheRatioColor, messageCountColor } from '../RequestBrowser/metricColors';
 
 interface RequestDetailProps {
   requestId: string;
@@ -106,6 +107,15 @@ function ExportButton({
   );
 }
 
+function computeTps(request: RequestSummary | RequestDetailType | null): string {
+  if (!request) return '-';
+  const tokens = request.output_tokens;
+  const ms = request.latency_ms;
+  if (tokens == null || tokens === 0 || ms == null || ms <= 0) return '-';
+  const tps = tokens / (ms / 1000);
+  return tps < 10 ? tps.toFixed(1) : Math.round(tps).toString();
+}
+
 function RequestDetailMetaRow({
   request,
 }: {
@@ -117,15 +127,20 @@ function RequestDetailMetaRow({
     ? `${cachedTokens}/${inputTokens} (${Math.round((cachedTokens / inputTokens) * 100)}%)`
     : null;
 
+  const tpsVal = computeTps(request);
+  const summary = request as RequestSummary | null;
+
   return (
     <div style={styles.metaRow}>
-      <MetaBadge label="Duration" value={request?.latency_ms != null ? formatDetailDuration(request.latency_ms) : '-'} />
+      <MetaBadge label="Duration" value={request?.latency_ms != null ? formatDetailDuration(request.latency_ms) : '-'} valueColor={durationColor(request?.latency_ms ?? null)} />
+      <MetaBadge label="TPS" value={tpsVal} valueColor={summary ? tpsColor(summary) : undefined} />
       <MetaBadge label="In" value={String(request?.input_tokens ?? '-')} />
       <MetaBadge label="Out" value={String(request?.output_tokens ?? '-')} />
       <MetaBadge label="Total" value={String(request?.total_tokens ?? '-')} />
-      {cachedDisplay ? <MetaBadge label="Cached" value={cachedDisplay} highlight /> : null}
-      {request?.cost != null ? <MetaBadge label="Cost" value={`$${request.cost.toFixed(6)}`} /> : null}
+      {cachedDisplay ? <MetaBadge label="Cached" value={cachedDisplay} valueColor={summary ? cacheRatioColor(summary) : undefined} highlight /> : null}
+      {request?.cost != null ? <MetaBadge label="Cost" value={`$${request.cost.toFixed(6)}`} valueColor={costColor(request.cost)} /> : null}
       {request?.cache_status ? <MetaBadge label="Cache" value={request.cache_status} /> : null}
+      {request?.message_count != null ? <MetaBadge label="Messages" value={String(request.message_count)} valueColor={messageCountColor(request.message_count)} /> : null}
       <MetaBadge label="Time" value={request ? new Date(request.timestamp).toLocaleString() : '-'} />
     </div>
   );
@@ -268,14 +283,14 @@ function DiffSection({
   );
 }
 
-function MetaBadge({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+function MetaBadge({ label, value, highlight, valueColor }: { label: string; value: string; highlight?: boolean; valueColor?: string }) {
   return (
     <span style={{
       display: 'flex', gap: 4, alignItems: 'center', fontSize: '0.77rem',
       ...(highlight ? { background: 'rgba(187, 128, 9, 0.15)', borderRadius: 4, padding: '1px 6px' } : {}),
     }}>
       <span style={{ color: highlight ? '#ffa657' : '#8b949e' }}>{label}:</span>
-      <span style={{ color: '#e6edf3', fontWeight: 500 }}>{value}</span>
+      <span style={{ color: valueColor ?? '#e6edf3', fontWeight: 500 }}>{value}</span>
     </span>
   );
 }

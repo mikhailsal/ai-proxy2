@@ -36,6 +36,7 @@ def _serialize_request(req: ProxyRequest) -> dict[str, Any]:
         "cost": req.cost if req.cost is not None else _extract_cost(req),
         "cache_status": req.cache_status,
         "error_message": req.error_message,
+        "message_count": _extract_message_count(req),
         "last_user_message": _extract_last_user_message(req),
         "assistant_response": _extract_assistant_response(req),
     }
@@ -69,6 +70,16 @@ def _extract_cost(req: ProxyRequest) -> float | None:
     if isinstance(cost, int | float):
         return float(cost)
     return None
+
+
+def _extract_message_count(req: ProxyRequest) -> int | None:
+    body = req.request_body or req.client_request_body
+    if not isinstance(body, dict):
+        return None
+    messages = body.get("messages")
+    if not isinstance(messages, list):
+        return None
+    return len(messages)
 
 
 def _extract_last_user_message(req: ProxyRequest) -> str | None:

@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { RequestSummary } from '../../types';
+import { tpsColor, durationColor, costColor, cacheRatioColor, messageCountColor } from './metricColors';
 
 const STORAGE_KEY = 'ai-proxy-col-widths';
 
@@ -10,6 +11,7 @@ const DEFAULT_COL_WIDTHS = {
   status: 46,
   latency: 64,
   tokens: 90,
+  msgs: 38,
   tps: 48,
   cost: 56,
   userMsg: 170,
@@ -49,6 +51,11 @@ const COLUMN_DEFS: { key: ColKey; label: string; tooltip?: string }[] = [
       'full upstream round-trip (or entire stream duration), to response completion.',
   },
   { key: 'tokens', label: 'Tokens' },
+  {
+    key: 'msgs',
+    label: 'Msgs',
+    tooltip: 'Number of messages in the request (conversation length).',
+  },
   {
     key: 'tps',
     label: 'TPS',
@@ -287,12 +294,15 @@ function RequestRow({ colWidths, item, isSelected, onSelect, virtualRow }: {
       <span style={{ ...colStyle('status', colWidths), color: statusColor(item.response_status_code) }}>
         {item.response_status_code ?? '-'}
       </span>
-      <span style={{ ...colStyle('latency', colWidths), color: '#8b949e' }}>
+      <span style={{ ...colStyle('latency', colWidths), color: durationColor(item.latency_ms) }}>
         {item.latency_ms != null ? formatDuration(item.latency_ms) : '-'}
       </span>
-      <span style={{ ...colStyle('tokens', colWidths), ...dim }}>{formatTokens(item)}</span>
-      <span style={{ ...colStyle('tps', colWidths), ...dim }}>{formatTps(item)}</span>
-      <span style={{ ...colStyle('cost', colWidths), ...dim }}>{formatCost(item.cost)}</span>
+      <span style={{ ...colStyle('tokens', colWidths), ...dim, color: cacheRatioColor(item) }}>{formatTokens(item)}</span>
+      <span style={{ ...colStyle('msgs', colWidths), ...dim, color: messageCountColor(item.message_count) }}>
+        {item.message_count ?? '-'}
+      </span>
+      <span style={{ ...colStyle('tps', colWidths), ...dim, color: tpsColor(item) }}>{formatTps(item)}</span>
+      <span style={{ ...colStyle('cost', colWidths), ...dim, color: costColor(item.cost) }}>{formatCost(item.cost)}</span>
       <span style={{ ...colStyle('userMsg', colWidths), ...styles.ellipsis, ...dim }} title={item.last_user_message ?? undefined}>
         {item.last_user_message ?? '-'}
       </span>
@@ -466,28 +476,8 @@ function statusColor(code: number | null): string {
 
 const styles: Record<string, React.CSSProperties> = {
   list: { flex: 1, overflow: 'auto' },
-  headerRow: {
-    display: 'flex',
-    padding: '6px 12px',
-    fontSize: '0.75rem',
-    color: '#8b949e',
-    borderBottom: '1px solid #21262d',
-    fontWeight: 600,
-    flexShrink: 0,
-    gap: 8,
-    userSelect: 'none',
-  },
-  row: {
-    display: 'flex',
-    alignItems: 'center',
-    padding: '0 12px',
-    cursor: 'pointer',
-    width: '100%',
-    boxSizing: 'border-box',
-    fontSize: '0.85rem',
-    color: '#e6edf3',
-    gap: 8,
-  },
+  headerRow: { display: 'flex', padding: '6px 12px', fontSize: '0.75rem', color: '#8b949e', borderBottom: '1px solid #21262d', fontWeight: 600, flexShrink: 0, gap: 8, userSelect: 'none' },
+  row: { display: 'flex', alignItems: 'center', padding: '0 12px', cursor: 'pointer', width: '100%', boxSizing: 'border-box', fontSize: '0.85rem', color: '#e6edf3', gap: 8 },
   ellipsis: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const },
   loading: { padding: '2rem', textAlign: 'center', color: '#8b949e' },
 };

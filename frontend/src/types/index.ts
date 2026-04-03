@@ -15,6 +15,7 @@ export interface RequestSummary {
   cached_input_tokens: number | null;
   cost: number | null;
   cache_status: string | null;
+  message_count: number | null;
   error_message: string | null;
   last_user_message: string | null;
   assistant_response: string | null;

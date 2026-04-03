@@ -2,9 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { ApiContext } from '../../src/hooks/useApi';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useInfiniteQuery } from '@tanstack/react-query';
 import { formatAssistantCell } from '../../src/components/RequestBrowser/RequestBrowserList';
 import type { RequestSummary, ConversationMessage, RequestDetail as RequestDetailType } from '../../src/types';
 
