@@ -13,6 +13,8 @@ providers:
   nvidia:
     type: openai_compatible
     endpoint: https://integrate.api.nvidia.com/v1
+    rate_limit:
+      rpm: 40
 # Model mappings: client-facing model name -> provider:actual_model
 # Explicit entries are visible in /v1/models. The "*" wildcard is a fallback.
 model_mappings:

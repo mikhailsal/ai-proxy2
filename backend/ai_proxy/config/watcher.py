@@ -44,6 +44,7 @@ async def _watch_loop(config_path: str, secrets_path: str | None) -> None:
     """
     from ai_proxy.adapters.registry import build_registry
     from ai_proxy.config.loader import reload_config
+    from ai_proxy.core.rate_limiter import build_rate_limiters
 
     config_files: list[Path] = [Path(config_path).resolve()]
     if secrets_path:
@@ -79,6 +80,7 @@ async def _watch_loop(config_path: str, secrets_path: str | None) -> None:
             try:
                 config = reload_config(config_path, secrets_path=secrets_path)
                 build_registry(config)
+                build_rate_limiters(config.providers)
                 logger.info(
                     "config_hot_reloaded",
                     mappings=len(config.model_mappings),

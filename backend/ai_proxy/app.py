@@ -16,6 +16,7 @@ from ai_proxy.api.ui.requests import router as requests_router
 from ai_proxy.config.loader import load_config
 from ai_proxy.config.settings import get_settings
 from ai_proxy.config.watcher import start_watcher, stop_watcher
+from ai_proxy.core.rate_limiter import build_rate_limiters
 from ai_proxy.db.engine import dispose_engine, init_engine
 from ai_proxy.logging.service import start_logging_service, stop_logging_service
 
@@ -34,8 +35,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Load config (public + secrets)
     config = load_config(settings.config_path, secrets_path=settings.secrets_path)
 
-    # Build adapter registry
+    # Build adapter registry and rate limiters
     build_registry(config)
+    build_rate_limiters(config.providers)
 
     # Start logging service
     log_cfg = config.logging
@@ -95,6 +97,7 @@ def create_app() -> FastAPI:
         settings = get_settings()
         config = do_reload(settings.config_path, secrets_path=settings.secrets_path)
         build_registry(config)
+        build_rate_limiters(config.providers)
         return {"status": "reloaded"}
 
     # Include routers

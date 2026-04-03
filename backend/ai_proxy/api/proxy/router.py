@@ -14,6 +14,7 @@ from ai_proxy.config.loader import get_app_config
 from ai_proxy.core.access import check_model_access
 from ai_proxy.core.key_resolution import resolve_provider_key
 from ai_proxy.core.modification import apply_modifications
+from ai_proxy.core.rate_limiter import get_rate_limiter
 from ai_proxy.core.routing import RouteResult, resolve_model
 from ai_proxy.logging.models import LogEntry
 from ai_proxy.logging.service import enqueue_log
@@ -144,6 +145,19 @@ def _validate_and_route_request(body: JsonObject, key_hash: str) -> tuple[str, R
     return model_requested, route
 
 
+async def _apply_rate_limit(provider_name: str) -> JSONResponse | None:
+    limiter = get_rate_limiter(provider_name)
+    if limiter is None:
+        return None
+    if limiter.is_queue_full:
+        return JSONResponse(
+            {"error": {"message": f"Rate limiter queue full for provider {provider_name}"}},
+            status_code=429,
+        )
+    await limiter.acquire()
+    return None
+
+
 @router.post("/v1/chat/completions")
 async def chat_completions(request: Request) -> Response:
     start_time = time.monotonic()
@@ -167,8 +181,11 @@ async def chat_completions(request: Request) -> Response:
     if client_api_key:
         override_api_key = resolve_provider_key(client_api_key, route.provider_name, is_known_key=is_known_key)
 
-    client_request_body: JsonObject = dict(body)
+    rate_limit_response = await _apply_rate_limit(route.provider_name)
+    if rate_limit_response is not None:
+        return rate_limit_response
 
+    client_request_body: JsonObject = dict(body)
     forward_body: JsonObject = {**body, "model": route.mapped_model}
     forward_headers = dict(request.headers)
     forward_body, forward_headers = apply_modifications(

@@ -6,6 +6,11 @@ from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings
 
 
+class RateLimitConfig(BaseModel):
+    rpm: int | None = None
+    max_queue: int = 100
+
+
 class ProviderConfig(BaseModel):
     type: str = "openai_compatible"
     endpoint: str
@@ -13,6 +18,7 @@ class ProviderConfig(BaseModel):
     headers: dict[str, str] = Field(default_factory=dict)
     timeout: int = 120
     fallback_for: str | None = None
+    rate_limit: RateLimitConfig = Field(default_factory=RateLimitConfig)
 
 
 class LoggingConfig(BaseModel):
