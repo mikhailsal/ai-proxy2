@@ -36,6 +36,7 @@ services:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-ai_proxy}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ai_proxy}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
       - OMNIROUTE_API_KEY=${OMNIROUTE_API_KEY}
+      - WATCHFILES_FORCE_POLLING=true
     networks:
       - default
       - omniroute-network

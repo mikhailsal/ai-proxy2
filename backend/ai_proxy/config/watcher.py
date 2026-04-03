@@ -4,6 +4,13 @@ Monitors config.yml and config.secrets.yml for changes and reloads the
 application configuration + adapter registry automatically.  Uses
 ``watchfiles`` (bundled with uvicorn[standard]) for efficient, OS-level
 file-change notifications.
+
+Inside Docker containers, inotify events from bind-mounted host files
+are unreliable (editors perform atomic writes that change the file's
+inode, but the mount tracks the original inode).  The watcher therefore
+watches the **parent directories** of each config file and enables
+**polling mode** when it detects a containerised environment, ensuring
+changes are always picked up.
 """
 
 from __future__ import annotations
@@ -24,6 +31,11 @@ logger = structlog.get_logger()
 _watcher_task: Task[None] | None = None
 
 
+def _running_in_docker() -> bool:
+    """Detect whether the process is running inside a Docker container."""
+    return Path("/.dockerenv").exists()
+
+
 async def _watch_loop(config_path: str, secrets_path: str | None) -> None:
     """Watch config files and reload on change.
 
@@ -33,20 +45,36 @@ async def _watch_loop(config_path: str, secrets_path: str | None) -> None:
     from ai_proxy.adapters.registry import build_registry
     from ai_proxy.config.loader import reload_config
 
-    watch_paths: list[Path] = [Path(config_path).resolve()]
+    config_files: list[Path] = [Path(config_path).resolve()]
     if secrets_path:
         secrets = Path(secrets_path).resolve()
         if secrets.exists():
-            watch_paths.append(secrets)
+            config_files.append(secrets)
+
+    watch_dirs: list[Path] = list(dict.fromkeys(p.parent for p in config_files))
+    config_basenames = {p.name for p in config_files}
+
+    force_polling = _running_in_docker()
 
     logger.info(
         "config_watcher_started",
-        watching=[str(p) for p in watch_paths],
+        watching=[str(d) for d in watch_dirs],
+        config_files=[str(p) for p in config_files],
+        force_polling=force_polling,
     )
 
     try:
-        async for changes in awatch(*watch_paths):
-            changed_files = [str(path) for _change_type, path in changes]
+        async for changes in awatch(
+            *watch_dirs,
+            force_polling=force_polling,
+            poll_delay_ms=500,
+            recursive=False,
+        ):
+            relevant = [(ct, path) for ct, path in changes if Path(path).name in config_basenames]
+            if not relevant:
+                continue
+
+            changed_files = [str(path) for _ct, path in relevant]
             logger.info("config_file_changed", files=changed_files)
             try:
                 config = reload_config(config_path, secrets_path=secrets_path)

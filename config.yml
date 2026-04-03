@@ -42,8 +42,10 @@ model_mappings:
   "google/gemini-3.1-flash-lite-preview": "openrouter:google/gemini-3.1-flash-lite-preview"
   # Meta
   "meta-llama/llama-4-scout": "openrouter:meta-llama/llama-4-scout"
+  "meta-llama/llama-3.3-70b-instruct": "openrouter:meta-llama/llama-3.3-70b-instruct"
   # Qwen
   "qwen/qwen3-8b": "openrouter:qwen/qwen3-8b"
+  "qwen/qwen3.5-9b": "openrouter:qwen/qwen3.5-9b"
   "qwen/qwen3-coder": "openrouter:qwen/qwen3-coder"
   "qwen/qwen3-coder-next": "openrouter:qwen/qwen3-coder-next"
   "qwen/qwen3.5-flash-02-23": "openrouter:qwen/qwen3.5-flash-02-23"
