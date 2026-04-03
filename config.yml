@@ -119,6 +119,12 @@ model_mappings:
   "kilocode/moonshotai/kimi-k2.5": "kilocode:moonshotai/kimi-k2.5"
   "kilocode/stepfun/step-3.5-flash:free": "kilocode:stepfun/step-3.5-flash:free"
   "kilocode/arcee-ai/trinity-large-preview:free": "kilocode:arcee-ai/trinity-large-preview:free"
+  "kilocode/kilo-auto/free": "kilocode:kilo-auto/free"
+  "kilocode/bytedance-seed/dola-seed-2.0-pro:free": "kilocode:bytedance-seed/dola-seed-2.0-pro:free"
+  "kilocode/qwen/qwen3.6-plus:free": "kilocode:qwen/qwen3.6-plus:free"
+  "kilocode/x-ai/grok-code-fast-1:optimized:free": "kilocode:x-ai/grok-code-fast-1:optimized:free"
+  "kilocode/nvidia/nemotron-3-super-120b-a12b:free": "kilocode:nvidia/nemotron-3-super-120b-a12b:free"
+  "kilocode/corethink:free": "kilocode:corethink:free"
 
 # ── Bypass mode ─────────────────────────────────────────────────────
 # When enabled, clients who are NOT in the api_keys list can still use
