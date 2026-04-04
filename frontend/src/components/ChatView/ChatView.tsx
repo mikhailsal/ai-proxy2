@@ -198,84 +198,107 @@ function ChatTimeline({ messages }: { messages: ConversationMessage[] }) {
 
 const BRANCH_COLORS = ['#58a6ff', '#7ee787', '#d2a8ff', '#ffa657', '#ff7b72', '#79c0ff', '#f778ba', '#a5d6ff'];
 
-function collectChain(id: string, nodeMap: Map<string, ConversationMessage>) {
-  const chain: ConversationMessage[] = [];
-  let cur: string | null = id;
-  while (cur) { const n = nodeMap.get(cur); if (!n) break; chain.push(n); cur = n.children.length === 1 ? n.children[0] : null; }
-  const last = chain[chain.length - 1];
-  return { chain, tail: last?.children.length > 1 ? last.children : [] as string[] };
+function findScrollParent(el: HTMLElement | null): HTMLElement | null {
+  let cur = el;
+  while (cur) { const s = getComputedStyle(cur).overflowY; if (s === 'auto' || s === 'scroll') return cur; cur = cur.parentElement; }
+  return null;
 }
 
-function GhostLines({ colors }: { colors: string[] }) {
-  if (colors.length === 0) return null;
-  return <div style={styles.ghostLineGroup}>{colors.map((c, i) => <div key={i} style={{ ...styles.ghostLine, background: c }} />)}</div>;
-}
-
-function BranchRemainder({ chain, tail, color, nodeMap }: { chain: ConversationMessage[]; tail: string[]; color: string; nodeMap: Map<string, ConversationMessage> }) {
-  return (
-    <div style={{ ...styles.forkBranch, borderColor: color }}>
-      {chain.map(n => <MessageCard key={n.node_id} message={n} />)}
-      {tail.length > 1 ? <TreeBranch nodeIds={tail} nodeMap={nodeMap} /> : null}
-    </div>
-  );
+function useBranchVisibility(branchCount: number, containerRef: React.RefObject<HTMLElement | null>) {
+  const contentTops = useRef<(HTMLElement | null)[]>([]);
+  const contentBottoms = useRef<(HTMLElement | null)[]>([]);
+  const thresholds = useRef<{ start: number; end: number }[]>([]);
+  const visRef = useRef<boolean[]>(Array(branchCount).fill(true));
+  const [visible, setVisible] = useState<boolean[]>(() => Array(branchCount).fill(true));
+  const setTopRef = useCallback((i: number, el: HTMLElement | null) => { contentTops.current[i] = el; }, []);
+  const setBottomRef = useCallback((i: number, el: HTMLElement | null) => { contentBottoms.current[i] = el; }, []);
+  useEffect(() => {
+    const scroll = findScrollParent(containerRef.current);
+    if (!scroll) return;
+    const MARGIN = 50;
+    let pendingCalibration: ReturnType<typeof setTimeout> | null = null;
+    const calibrate = () => {
+      const sTop = scroll.scrollTop; const sr = scroll.getBoundingClientRect();
+      thresholds.current = Array.from({ length: branchCount }, (_, i) => {
+        const t = contentTops.current[i]; const b = contentBottoms.current[i];
+        if (!t || !b) return { start: -Infinity, end: Infinity };
+        return { start: sTop + (t.getBoundingClientRect().top - sr.top), end: sTop + (b.getBoundingClientRect().bottom - sr.top) };
+      });
+    };
+    const scheduleCalibration = (delayMs: number) => {
+      if (pendingCalibration) clearTimeout(pendingCalibration);
+      pendingCalibration = setTimeout(() => { pendingCalibration = null; calibrate(); }, delayMs);
+    };
+    const onScroll = () => {
+      if (thresholds.current.length !== branchCount || pendingCalibration) return;
+      const sTop = scroll.scrollTop; const sBot = sTop + scroll.clientHeight;
+      const next = thresholds.current.map(th => th.end > (sTop - MARGIN) && th.start < (sBot + MARGIN));
+      const prev = visRef.current;
+      if (next.every((v, j) => v === prev[j])) return;
+      visRef.current = next;
+      if (next.every(Boolean) && !prev.every(Boolean)) scheduleCalibration(400);
+      setVisible(next);
+    };
+    scroll.addEventListener('scroll', onScroll, { passive: true });
+    requestAnimationFrame(() => { calibrate(); onScroll(); });
+    return () => { scroll.removeEventListener('scroll', onScroll); if (pendingCalibration) clearTimeout(pendingCalibration); };
+  }, [branchCount, containerRef]);
+  return { visible, setTopRef, setBottomRef };
 }
 
 function TreeBranch({ nodeIds, nodeMap }: { nodeIds: string[]; nodeMap: Map<string, ConversationMessage> }) {
   if (nodeIds.length === 0) return null;
   if (nodeIds.length === 1) return <LinearChain startNodeId={nodeIds[0]} nodeMap={nodeMap} />;
-  const branches = nodeIds.map((nodeId, i) => {
-    const { chain, tail } = collectChain(nodeId, nodeMap);
-    return { nodeId, chain, tail, color: BRANCH_COLORS[i % BRANCH_COLORS.length], index: i };
-  });
-  const minLen = Math.min(...branches.map(b => b.chain.length));
-  const ended = branches.filter(b => b.chain.length <= minLen && b.tail.length === 0);
-  const cont = branches.filter(b => b.chain.length > minLen || b.tail.length > 0);
-  if (ended.length === 0) return (
-    <div style={styles.forkContainer}>{branches.map(b => (
-      <div key={b.nodeId} style={{ ...styles.forkBranch, borderColor: b.color }}>
-        <div style={{ ...styles.forkLabel, background: b.color }}>Branch {b.index + 1}</div>
-        {b.chain.map(n => <MessageCard key={n.node_id} message={n} />)}
-        {b.tail.length > 1 ? <TreeBranch nodeIds={b.tail} nodeMap={nodeMap} /> : null}
-      </div>
-    ))}</div>
+  return <ForkContainer nodeIds={nodeIds} nodeMap={nodeMap} />;
+}
+
+function ForkContainer({ nodeIds, nodeMap }: { nodeIds: string[]; nodeMap: Map<string, ConversationMessage> }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const { visible, setTopRef, setBottomRef } = useBranchVisibility(nodeIds.length, containerRef);
+  const anyVisible = visible.some(Boolean);
+  return (
+    <div ref={containerRef} style={styles.forkContainer}>
+      {nodeIds.map((nodeId, i) => {
+        const color = BRANCH_COLORS[i % BRANCH_COLORS.length];
+        const isVis = !anyVisible || visible[i];
+        return (
+          <div key={nodeId} style={{ ...styles.forkBranch, borderColor: color, flex: isVis ? '1 1 0' : '0 0 3px', minWidth: isVis ? 280 : 3, paddingLeft: isVis ? 12 : 0, overflow: 'hidden' }}>
+            {isVis ? <div style={{ ...styles.forkLabel, background: color }}>Branch {i + 1}</div> : null}
+            <BranchContent startNodeId={nodeId} nodeMap={nodeMap} branchIndex={i} setTopRef={setTopRef} setBottomRef={setBottomRef} />
+          </div>
+        );
+      })}
+    </div>
   );
-  const ghostColors = ended.map(b => b.color);
-  return (<>
-    <div style={styles.forkContainer}>{branches.map(b => (
-      <div key={b.nodeId} style={{ ...styles.forkBranch, borderColor: b.color }}>
-        <div style={{ ...styles.forkLabel, background: b.color }}>Branch {b.index + 1}</div>
-        {b.chain.slice(0, minLen).map(n => <MessageCard key={n.node_id} message={n} />)}
-        {b.chain.length <= minLen && b.tail.length === 0 ? (
-          <div style={{ ...styles.branchEndedTag, borderColor: b.color }}>
-            <span style={{ ...styles.branchEndedDot, background: b.color }} />Branch {b.index + 1} ended
-          </div>
-        ) : null}
-      </div>
-    ))}</div>
-    {cont.length > 1 ? (
-      <div style={styles.continuationZone}>
-        <GhostLines colors={ghostColors} />
-        <div style={{ ...styles.forkContainer, flex: 1 }}>{cont.map(b => (
-          <BranchRemainder key={b.nodeId} chain={b.chain.slice(minLen)} tail={b.tail} color={b.color} nodeMap={nodeMap} />
-        ))}</div>
-      </div>
-    ) : cont.length === 1 ? (
-      <div style={styles.continuationZone}>
-        <GhostLines colors={ghostColors} />
-        <div style={styles.continuationContent}>
-          <div style={{ ...styles.continuationBar, background: cont[0].color }} />
-          <div style={styles.continuationMessages}>
-            {cont[0].chain.slice(minLen).map(n => <MessageCard key={n.node_id} message={n} />)}
-            {cont[0].tail.length > 1 ? <TreeBranch nodeIds={cont[0].tail} nodeMap={nodeMap} /> : null}
-          </div>
-        </div>
-      </div>
-    ) : null}
-  </>);
+}
+
+function BranchContent({ startNodeId, nodeMap, branchIndex, setTopRef, setBottomRef }: { startNodeId: string; nodeMap: Map<string, ConversationMessage>; branchIndex: number; setTopRef: (i: number, el: HTMLElement | null) => void; setBottomRef: (i: number, el: HTMLElement | null) => void }) {
+  const chain: ConversationMessage[] = [];
+  let cur: string | null = startNodeId;
+  while (cur) { const n = nodeMap.get(cur); if (!n) break; chain.push(n); cur = n.children.length === 1 ? n.children[0] : null; }
+  const last = chain[chain.length - 1];
+  const tailChildren = last?.children.length > 1 ? last.children : [];
+  const lastIdx = chain.length - 1;
+  return (
+    <>
+      {chain.map((n, idx) => {
+        const isFirst = idx === 0, isLast = idx === lastIdx && tailChildren.length === 0;
+        if (isFirst || isLast) {
+          return <div key={n.node_id} ref={el => { if (isFirst) setTopRef(branchIndex, el); if (isLast) setBottomRef(branchIndex, el); }}><MessageCard message={n} /></div>;
+        }
+        return <MessageCard key={n.node_id} message={n} />;
+      })}
+      {tailChildren.length > 1 ? <TreeBranch nodeIds={tailChildren} nodeMap={nodeMap} /> : null}
+    </>
+  );
 }
 
 function LinearChain({ startNodeId, nodeMap }: { startNodeId: string; nodeMap: Map<string, ConversationMessage> }) {
-  const { chain, tail } = collectChain(startNodeId, nodeMap);
+  const chain: ConversationMessage[] = [];
+  let cur: string | null = startNodeId;
+  while (cur) { const n = nodeMap.get(cur); if (!n) break; chain.push(n); cur = n.children.length === 1 ? n.children[0] : null; }
+  const last = chain[chain.length - 1];
+  const tail = last?.children.length > 1 ? last.children : [];
   return <>{chain.map(n => <MessageCard key={n.node_id} message={n} />)}{tail.length > 1 ? <TreeBranch nodeIds={tail} nodeMap={nodeMap} /> : null}</>;
 }
 
@@ -428,7 +451,7 @@ function roleBadgeStyle(role: string): React.CSSProperties {
   };
 }
 
-const fc = 'column' as const, uc = 'uppercase' as const, it = 'italic' as const;
+const fc = 'column' as const, uc = 'uppercase' as const;
 const styles: Record<string, React.CSSProperties> = {
   container: { display: 'flex', height: '100%', overflow: 'hidden' },
   sidebar: { width: 280, borderRight: '1px solid #21262d', display: 'flex', flexDirection: fc, flexShrink: 0 },
@@ -465,15 +488,7 @@ const styles: Record<string, React.CSSProperties> = {
   reasoningToggle: { display: 'flex', alignItems: 'center', gap: 6, width: '100%', background: 'none', border: 'none', color: '#d2a8ff', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, padding: '8px 12px' },
   reasoningIcon: { fontSize: '0.9rem' }, reasoningLength: { color: '#8b949e', fontWeight: 400, fontSize: '0.72rem' },
   reasoningContent: { padding: '0 12px 12px', fontSize: '0.82rem', lineHeight: 1.6, color: '#c9d1d9', whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 400, overflowY: 'auto', borderTop: '1px solid #21262d' },
-  forkContainer: { display: 'flex', gap: 12, padding: '4px 0', alignItems: 'stretch' },
-  forkBranch: { flex: '1 1 0', minWidth: 280, borderLeft: '3px solid', borderRadius: 6, paddingLeft: 12, display: 'flex', flexDirection: fc, gap: 12 },
+  forkContainer: { display: 'flex', gap: 0, padding: '4px 0', alignItems: 'stretch' },
+  forkBranch: { flex: '1 1 0', minWidth: 280, borderLeft: '3px solid', paddingLeft: 12, display: 'flex', flexDirection: fc, gap: 12, transition: 'flex 0.35s ease, min-width 0.35s ease, padding 0.35s ease' },
   forkLabel: { display: 'inline-block', alignSelf: 'flex-start', fontSize: '0.7rem', fontWeight: 700, color: '#0d1117', padding: '2px 8px', borderRadius: 4, textTransform: uc, letterSpacing: '0.04em' },
-  branchEndedTag: { display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.72rem', color: '#8b949e', fontStyle: it, padding: '6px 0', borderTop: '1px dashed', marginTop: 4 },
-  branchEndedDot: { width: 6, height: 6, borderRadius: '50%', flexShrink: 0 },
-  continuationZone: { display: 'flex', gap: 0, padding: '4px 0' },
-  continuationContent: { flex: 1, display: 'flex', gap: 0, minWidth: 0 },
-  continuationBar: { width: 3, borderRadius: 2, flexShrink: 0, marginRight: 12 },
-  continuationMessages: { flex: 1, display: 'flex', flexDirection: fc, gap: 12, minWidth: 0 },
-  ghostLineGroup: { display: 'flex', gap: 4, alignItems: 'stretch', padding: '0 6px', flexShrink: 0 },
-  ghostLine: { width: 2, borderRadius: 1, opacity: 0.3, minHeight: 20 },
 };
