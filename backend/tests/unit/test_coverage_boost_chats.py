@@ -124,6 +124,82 @@ def test_group_identity_system_prompt_first_user_empty():
     assert label == "unknown"
 
 
+def test_group_identity_triple_all_present():
+    record = _make_record(
+        request_body={
+            "messages": [
+                {"role": "system", "content": "be helpful"},
+                {"role": "user", "content": "hello"},
+            ]
+        },
+        response_body={"choices": [{"message": {"role": "assistant", "content": "hi there"}}]},
+        system_prompt_text="be helpful",
+        first_user_message_text="hello",
+        first_assistant_response_text="hi there",
+    )
+    key, label = chat_repo._group_identity(record, "system_prompt_first_user_first_assistant")
+    assert "System: be helpful" in label
+    assert "User: hello" in label
+    assert "Assistant: hi there" in label
+
+
+def test_group_identity_triple_system_and_user_only():
+    record = _make_record(
+        request_body={"messages": [{"role": "system", "content": "sys"}, {"role": "user", "content": "usr"}]},
+        system_prompt_text="sys",
+        first_user_message_text="usr",
+    )
+    key, label = chat_repo._group_identity(record, "system_prompt_first_user_first_assistant")
+    assert "System: sys" in label
+    assert "User: usr" in label
+    assert "Assistant:" not in label
+
+
+def test_group_identity_triple_empty():
+    record = _make_record(request_body={"messages": []})
+    key, label = chat_repo._group_identity(record, "system_prompt_first_user_first_assistant")
+    assert label == "unknown"
+
+
+def test_first_assistant_response_text_from_cached_column():
+    record = _make_record(first_assistant_response_text="cached response")
+    result = chat_repo._first_assistant_response_text(record)
+    assert result == "cached response"
+
+
+def test_first_assistant_response_text_from_request_body_history():
+    """Multi-turn: assistant already in conversation history takes priority."""
+    record = _make_record(
+        request_body={
+            "messages": [
+                {"role": "system", "content": "sys"},
+                {"role": "user", "content": "hello"},
+                {"role": "assistant", "content": "from history"},
+                {"role": "user", "content": "followup"},
+            ]
+        },
+        response_body={"choices": [{"message": {"role": "assistant", "content": "from current turn"}}]},
+    )
+    result = chat_repo._first_assistant_response_text(record)
+    assert result == "from history"
+
+
+def test_first_assistant_response_text_fallback_to_response_body():
+    """Single-turn: no assistant in history, falls back to response_body."""
+    record = _make_record(
+        request_body={"messages": [{"role": "user", "content": "hello"}]},
+        response_body={"choices": [{"message": {"role": "assistant", "content": "dynamic response"}}]},
+    )
+    result = chat_repo._first_assistant_response_text(record)
+    assert result == "dynamic response"
+
+
+def test_first_assistant_response_text_missing():
+    record = _make_record()
+    result = chat_repo._first_assistant_response_text(record)
+    assert result == ""
+
+
 def test_group_identity_default_fallback():
     record = _make_record(request_body={"messages": []})
     key, label = chat_repo._group_identity(record, "system_prompt")

@@ -81,6 +81,10 @@ def test_chat_repository_helper_branches() -> None:
         '{"first_user_message": "hello\\n[input_audio]", "system_prompt": ""}',
         "User: hello\n[input_audio]",
     )
+    triple_key, triple_label = chat_repo._group_identity(record, "system_prompt_first_user_first_assistant")
+    assert '"first_assistant_response": "Tool call: lookup_weather"' in triple_key
+    assert '"first_user_message": "hello\\n[input_audio]"' in triple_key
+    assert triple_label == "User: hello\n[input_audio]\nAssistant: Tool call: lookup_weather"
     assert chat_repo._assistant_response_message({}) is None
     assert chat_repo._assistant_response_message({"choices": ["bad"]}) is None
     assert chat_repo._assistant_response_message(record.response_body) == {

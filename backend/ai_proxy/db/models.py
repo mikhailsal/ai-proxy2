@@ -85,6 +85,7 @@ class ProxyRequest(Base):
 
     system_prompt_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     first_user_message_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    first_assistant_response_text: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     __table_args__ = (
         Index("ix_request_body_gin", "request_body", postgresql_using="gin"),
@@ -92,6 +93,9 @@ class ProxyRequest(Base):
         Index("ix_proxy_requests_search_vector", "search_vector", postgresql_using="gin"),
         Index("ix_proxy_requests_system_prompt_text", "system_prompt_text", postgresql_using="hash"),
         Index("ix_proxy_requests_first_user_message_text", "first_user_message_text", postgresql_using="hash"),
+        Index(
+            "ix_proxy_requests_first_assistant_response_text", "first_assistant_response_text", postgresql_using="hash"
+        ),
     )
 
 

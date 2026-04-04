@@ -113,6 +113,21 @@ def _first_message_text(request_body: Any) -> str:
     return _message_display_text(messages[0]) or "unknown"
 
 
+def _first_assistant_response_text(request: ProxyRequest) -> str:
+    cached = getattr(request, "first_assistant_response_text", None)
+    if cached:
+        return cached
+    request_body = getattr(request, "request_body", None)
+    assistant_from_history = _first_message_by_role(request_body, "assistant")
+    if assistant_from_history:
+        return _message_display_text(assistant_from_history)
+    response_body = getattr(request, "response_body", None)
+    assistant_msg = _assistant_response_message(response_body)
+    if assistant_msg:
+        return _message_display_text(assistant_msg)
+    return ""
+
+
 def _group_identity(request: ProxyRequest, group_by: str) -> tuple[str, str]:
     request_body = getattr(request, "request_body", None)
 
@@ -146,6 +161,26 @@ def _group_identity(request: ProxyRequest, group_by: str) -> tuple[str, str]:
         if user_text:
             return group_key, f"User: {user_text}"
         return group_key, "unknown"
+
+    if group_by == "system_prompt_first_user_first_assistant":
+        assistant_text = _first_assistant_response_text(request)
+        group_key = json.dumps(
+            {
+                "first_assistant_response": assistant_text,
+                "first_user_message": user_text,
+                "system_prompt": system_text,
+            },
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        parts: list[str] = []
+        if system_text:
+            parts.append(f"System: {system_text}")
+        if user_text:
+            parts.append(f"User: {user_text}")
+        if assistant_text:
+            parts.append(f"Assistant: {assistant_text}")
+        return group_key, "\n".join(parts) if parts else "unknown"
 
     if system_text:
         return system_text, system_text
@@ -287,9 +322,42 @@ def _group_key_expression(group_by: str):
             literal('"}'),
         )
 
+    if group_by == "system_prompt_first_user_first_assistant":
+        assistant = func.coalesce(ProxyRequest.first_assistant_response_text, literal(""))
+        return func.concat(
+            literal('{"first_assistant_response": "'),
+            assistant,
+            literal('", "first_user_message": "'),
+            user,
+            literal('", "system_prompt": "'),
+            system,
+            literal('"}'),
+        )
+
     return case(
         (ProxyRequest.system_prompt_text.isnot(None), ProxyRequest.system_prompt_text),
         (ProxyRequest.first_user_message_text.isnot(None), ProxyRequest.first_user_message_text),
+        else_=literal("unknown"),
+    )
+
+
+def _triple_label_case(system, user, assistant):
+    """Build a CASE expression for the triple (system+user+assistant) label."""
+    has_s = ProxyRequest.system_prompt_text.isnot(None)
+    has_u = ProxyRequest.first_user_message_text.isnot(None)
+    has_a = ProxyRequest.first_assistant_response_text.isnot(None)
+    s = func.concat(literal("System: "), system)
+    u = func.concat(literal("User: "), user)
+    a = func.concat(literal("Assistant: "), assistant)
+    sep = literal("\n")
+    return case(
+        (has_s & has_u & has_a, func.concat(s, sep, u, sep, a)),
+        (has_s & has_u, func.concat(s, sep, u)),
+        (has_s & has_a, func.concat(s, sep, a)),
+        (has_u & has_a, func.concat(u, sep, a)),
+        (has_s, s),
+        (has_u, u),
+        (has_a, a),
         else_=literal("unknown"),
     )
 
@@ -319,6 +387,10 @@ def _group_label_expression(group_by: str):
             (ProxyRequest.first_user_message_text.isnot(None), func.concat(literal("User: "), user)),
             else_=literal("unknown"),
         )
+
+    if group_by == "system_prompt_first_user_first_assistant":
+        assistant = func.coalesce(ProxyRequest.first_assistant_response_text, literal(""))
+        return _triple_label_case(system, user, assistant)
 
     return case(
         (ProxyRequest.system_prompt_text.isnot(None), ProxyRequest.system_prompt_text),
@@ -406,6 +478,7 @@ async def get_conversation_messages(
                 ProxyRequest.total_tokens,
                 ProxyRequest.system_prompt_text,
                 ProxyRequest.first_user_message_text,
+                ProxyRequest.first_assistant_response_text,
                 ProxyRequest.client_api_key_hash,
             )
         )

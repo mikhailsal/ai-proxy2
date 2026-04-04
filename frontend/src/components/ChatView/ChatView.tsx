@@ -82,7 +82,8 @@ function ConversationSidebar({
           onChange={event => onGroupByChange(event.target.value as ChatGroupBy)}
         >
           <option value="system_prompt">By System Prompt</option>
-          <option value="system_prompt_first_user">By System Prompt + First User</option>
+          <option value="system_prompt_first_user">By System + User</option>
+          <option value="system_prompt_first_user_first_assistant">By System + User + Assistant</option>
           <option value="client">By Client</option>
           <option value="model">By Model</option>
         </select>
