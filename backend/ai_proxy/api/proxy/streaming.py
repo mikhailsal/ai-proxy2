@@ -24,11 +24,22 @@ logger = structlog.get_logger()
 @dataclass
 class StreamState:
     chunks_collected: list[JsonObject] = field(default_factory=list)
-    full_content: str = ""
+    merged_choices: dict[int, JsonObject] = field(default_factory=dict)
     usage_data: JsonObject = field(default_factory=dict)
     response_headers: dict[str, str] = field(default_factory=dict)
     response_status_code: int = 200
     stream_error_message: str | None = None
+
+    @property
+    def full_content(self) -> str:
+        msg = self.merged_choices.get(0, {})
+        content = msg.get("content")
+        return content if isinstance(content, str) else ""
+
+    @property
+    def full_reasoning(self) -> str:
+        msg = self.merged_choices.get(0, {})
+        return msg.get("reasoning_content") or msg.get("reasoning") or ""
 
 
 async def stream_error_response(
@@ -147,6 +158,9 @@ async def relay_stream_chunks(
         yield stream_error_event(state.stream_error_message or "Provider stream error")
 
 
+_STRING_MERGE_KEYS = frozenset({"content", "reasoning_content", "reasoning", "refusal"})
+
+
 def capture_stream_chunk(state: StreamState, chunk_bytes: bytes) -> None:
     parsed = parse_sse_chunk(chunk_bytes)
     if not parsed:
@@ -154,14 +168,78 @@ def capture_stream_chunk(state: StreamState, chunk_bytes: bytes) -> None:
 
     state.chunks_collected.append(parsed)
     for choice in parsed.get("choices", []):
+        idx = choice.get("index", 0)
         delta = choice.get("delta", {})
-        content = delta.get("content")
-        if isinstance(content, str):
-            state.full_content += content
+        _merge_delta(state, idx, delta)
+        finish = choice.get("finish_reason")
+        if finish is not None:
+            state.merged_choices.setdefault(idx, {})["finish_reason"] = finish
 
     usage = parsed.get("usage")
     if isinstance(usage, dict):
         state.usage_data = usage
+
+
+def _merge_delta(state: StreamState, choice_idx: int, delta: JsonObject) -> None:
+    merged = state.merged_choices.setdefault(choice_idx, {})
+    for key, value in delta.items():
+        if value is None:
+            continue
+        if key in _STRING_MERGE_KEYS and isinstance(value, str):
+            merged[key] = merged.get(key, "") + value
+        elif isinstance(value, list):
+            _merge_list_field(merged, key, value)
+        else:
+            merged[key] = value
+
+
+_LIST_ITEM_CONCAT_KEYS = frozenset({"arguments", "summary", "text"})
+
+
+def _merge_list_field(merged: JsonObject, key: str, items: list[Any]) -> None:
+    existing = merged.get(key)
+    if not isinstance(existing, list):
+        merged[key] = list(items)
+        return
+    for item in items:
+        if not isinstance(item, dict):
+            existing.append(item)
+            continue
+        idx = item.get("index")
+        if idx is None:
+            existing.append(item)
+            continue
+        target = None
+        for entry in existing:
+            if isinstance(entry, dict) and entry.get("index") == idx:
+                target = entry
+                break
+        if target is None:
+            existing.append(dict(item))
+        else:
+            _deep_merge_item(target, item)
+
+
+def _deep_merge_item(target: dict[str, Any], source: dict[str, Any]) -> None:
+    for k, v in source.items():
+        if v is None:
+            continue
+        existing_v = target.get(k)
+        if isinstance(v, dict) and isinstance(existing_v, dict):
+            _deep_merge_item(existing_v, v)
+        elif k in _LIST_ITEM_CONCAT_KEYS and isinstance(v, str) and isinstance(existing_v, str):
+            target[k] = existing_v + v
+        else:
+            target[k] = v
+
+
+def _extract_reasoning_tokens(usage_data: JsonObject) -> int | None:
+    details = usage_data.get("completion_tokens_details")
+    if isinstance(details, dict):
+        tokens = details.get("reasoning_tokens")
+        if isinstance(tokens, int) and tokens > 0:
+            return tokens
+    return None
 
 
 def record_stream_exception(state: StreamState, error_message: str, status_code: int) -> None:
@@ -191,6 +269,7 @@ async def enqueue_stream_log(
     latency = (time.monotonic() - start_time) * 1000
     cost_raw = state.usage_data.get("cost")
     cost = float(cost_raw) if isinstance(cost_raw, int | float) else None
+    reasoning_tokens = _extract_reasoning_tokens(state.usage_data)
     entry = LogEntry.from_proxy_context(
         entry_id=request_id,
         request=request,
@@ -213,14 +292,28 @@ async def enqueue_stream_log(
         error_message=state.stream_error_message,
     )
     entry.cost = cost
+    entry.reasoning_tokens = reasoning_tokens
     await enqueue_log(entry)
 
 
 def assembled_stream_response(state: StreamState) -> JsonObject | None:
-    if not state.full_content and not state.chunks_collected:
+    if not state.merged_choices and not state.chunks_collected:
         return None
 
+    choices: list[JsonObject] = []
+    for idx in sorted(state.merged_choices):
+        merged = state.merged_choices[idx]
+        message = {k: v for k, v in merged.items() if k != "finish_reason"}
+        message.setdefault("role", "assistant")
+        choice: JsonObject = {"index": idx, "message": message}
+        if "finish_reason" in merged:
+            choice["finish_reason"] = merged["finish_reason"]
+        choices.append(choice)
+
+    if not choices:
+        choices.append({"index": 0, "message": {"role": "assistant", "content": ""}})
+
     return {
-        "choices": [{"message": {"role": "assistant", "content": state.full_content}}],
+        "choices": choices,
         "usage": state.usage_data,
     }
