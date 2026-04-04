@@ -31,3 +31,8 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #484f58;
 }
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}

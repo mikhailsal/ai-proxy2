@@ -1,11 +1,13 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import type { ChatGroupBy } from '../../app/navigation';
 import { useApi } from '../../hooks/useApi';
 import { useAutoRefresh } from '../../hooks/autoRefreshContext';
 import type { Conversation, ConversationMessage } from '../../types';
 import { JsonViewer } from '../JsonViewer/JsonViewer';
 import { RequestDetailContent } from '../RequestDetail/RequestDetail';
+
+const CONVERSATIONS_PAGE_SIZE = 40;
 
 interface ChatViewProps {
   groupBy: ChatGroupBy;
@@ -23,13 +25,27 @@ export function ChatView({
   const api = useApi();
   const { refetchInterval } = useAutoRefresh();
 
-  const { data: conversations, isLoading } = useQuery({
+  const {
+    data: conversationsData,
+    isLoading,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
     queryKey: ['conversations', groupBy],
-    queryFn: () => api.getConversations({ group_by: groupBy, limit: 100 }),
+    queryFn: ({ pageParam = 0 }) =>
+      api.getConversations({ group_by: groupBy, limit: CONVERSATIONS_PAGE_SIZE, offset: pageParam }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, _allPages, lastPageParam) => {
+      if (lastPage.items.length < CONVERSATIONS_PAGE_SIZE) return undefined;
+      return (lastPageParam as number) + CONVERSATIONS_PAGE_SIZE;
+    },
     refetchInterval,
   });
 
-  const { data: messages } = useQuery({
+  const conversations = conversationsData?.pages.flatMap(page => page.items) ?? [];
+
+  const { data: messages, isFetching: isMessagesFetching } = useQuery({
     queryKey: ['conversation-messages', selectedGroup, groupBy],
     queryFn: () => api.getConversationMessages(selectedGroup!, groupBy),
     enabled: !!selectedGroup,
@@ -38,23 +54,46 @@ export function ChatView({
   return (
     <div style={styles.container}>
       <ConversationSidebar
-        conversations={conversations?.items ?? []}
+        conversations={conversations}
         groupBy={groupBy}
         isLoading={isLoading}
         onGroupByChange={onGroupByChange}
         onSelectGroup={onSelectGroup}
         selectedGroup={selectedGroup}
+        hasNextPage={!!hasNextPage}
+        isFetchingNextPage={isFetchingNextPage}
+        onLoadMore={() => { fetchNextPage(); }}
       />
 
       <div style={styles.timeline}>
         {!selectedGroup ? (
           <div style={styles.emptyState}>Select a conversation to view messages.</div>
+        ) : isMessagesFetching && !messages ? (
+          <MessageLoadingSkeleton />
         ) : (
           <ChatTimeline messages={messages?.items ?? []} />
         )}
       </div>
     </div>
   );
+}
+
+function useBottomLoader(hasNextPage: boolean, isFetching: boolean, onLoadMore: () => void) {
+  const ref = useRef<HTMLDivElement>(null);
+  const handleScroll = useCallback(() => {
+    const el = ref.current;
+    if (!el || isFetching || !hasNextPage) return;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 120) onLoadMore();
+  }, [hasNextPage, isFetching, onLoadMore]);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.addEventListener('scroll', handleScroll, { passive: true });
+    return () => el.removeEventListener('scroll', handleScroll);
+  }, [handleScroll]);
+
+  return ref;
 }
 
 function ConversationSidebar({
@@ -64,6 +103,9 @@ function ConversationSidebar({
   onGroupByChange,
   onSelectGroup,
   selectedGroup,
+  hasNextPage,
+  isFetchingNextPage,
+  onLoadMore,
 }: {
   conversations: Conversation[];
   groupBy: ChatGroupBy;
@@ -71,7 +113,12 @@ function ConversationSidebar({
   onGroupByChange: (groupBy: ChatGroupBy) => void;
   onSelectGroup: (groupKey: string) => void;
   selectedGroup: string | null;
+  hasNextPage: boolean;
+  isFetchingNextPage: boolean;
+  onLoadMore: () => void;
 }) {
+  const listRef = useBottomLoader(hasNextPage, isFetchingNextPage, onLoadMore);
+
   return (
     <div style={styles.sidebar}>
       <div style={styles.sidebarHeader}>
@@ -87,7 +134,7 @@ function ConversationSidebar({
       </div>
       {isLoading ? <div style={styles.loading}>Loading…</div> : null}
       {!isLoading ? (
-        <div style={styles.convList}>
+        <div ref={listRef} style={styles.convList}>
           {conversations.map(conv => (
             <ConversationRow
               conversation={conv}
@@ -97,6 +144,7 @@ function ConversationSidebar({
             />
           ))}
           {conversations.length === 0 ? <div style={styles.loading}>No conversations found.</div> : null}
+          {isFetchingNextPage ? <div style={styles.loadingMore}>Loading more…</div> : null}
         </div>
       ) : null}
     </div>
@@ -151,8 +199,10 @@ function ChatTimeline({ messages }: { messages: ConversationMessage[] }) {
 
 function MessageCard({ message }: { message: ConversationMessage }) {
   const [showRawRequest, setShowRawRequest] = useState(false);
+  const [showReasoning, setShowReasoning] = useState(false);
   const metaTagNames = Object.keys(message.meta_tags ?? {});
   const toolCalls = getAssistantToolCalls(message);
+  const reasoning = getReasoningContent(message);
 
   return (
     <div style={styles.requestBlock}>
@@ -166,6 +216,21 @@ function MessageCard({ message }: { message: ConversationMessage }) {
         {message.tool_names.length > 0 ? <span style={styles.reqTokens}>tools: {message.tool_names.join(', ')}</span> : null}
         {metaTagNames.length > 0 ? <span style={styles.reqTokens}>tags: {metaTagNames.join(', ')}</span> : null}
       </div>
+      {reasoning ? (
+        <div style={styles.reasoningBlock}>
+          <button
+            style={styles.reasoningToggle}
+            onClick={() => setShowReasoning(current => !current)}
+          >
+            <span style={styles.reasoningIcon}>&#x1F9E0;</span>
+            {showReasoning ? 'Hide reasoning' : 'Show reasoning'}
+            <span style={styles.reasoningLength}>({reasoning.length} chars)</span>
+          </button>
+          {showReasoning ? (
+            <div style={styles.reasoningContent}>{reasoning}</div>
+          ) : null}
+        </div>
+      ) : null}
       <ChatBubble role={message.role} content={message.content} />
       {toolCalls.length > 0 ? <AssistantToolCallsPanel toolCalls={toolCalls} /> : null}
       <button
@@ -180,17 +245,16 @@ function MessageCard({ message }: { message: ConversationMessage }) {
 }
 
 function ChatBubble({ role, content }: { role: string; content: string }) {
-  const isUser = role === 'user';
   const isSystem = role === 'system';
   return (
     <div style={{
       ...styles.bubble,
-      alignSelf: isUser ? 'flex-end' : isSystem ? 'center' : 'flex-start',
-      background: isUser ? '#1f6feb' : isSystem ? '#21262d' : '#161b22',
-      borderRadius: isUser ? '12px 12px 2px 12px' : isSystem ? '6px' : '12px 12px 12px 2px',
+      alignSelf: isSystem ? 'center' : 'flex-start',
+      background: isSystem ? '#21262d' : '#161b22',
+      borderRadius: isSystem ? '6px' : '12px 12px 12px 2px',
       maxWidth: isSystem ? '100%' : '80%',
     }}>
-      {!isUser && <div style={styles.bubbleRole}>{role}</div>}
+      <div style={styles.bubbleRole}>{role}</div>
       <div style={styles.bubbleContent}>{content}</div>
     </div>
   );
@@ -275,6 +339,31 @@ function parseToolArguments(rawArguments: string | null): unknown {
   }
 }
 
+function getReasoningContent(message: ConversationMessage): string | null {
+  if (message.role !== 'assistant' || !isRecord(message.raw_message)) {
+    return null;
+  }
+
+  const text =
+    (typeof message.raw_message.reasoning_content === 'string' ? message.raw_message.reasoning_content : null) ??
+    (typeof message.raw_message.reasoning === 'string' ? message.raw_message.reasoning : null);
+
+  return text?.trim() || null;
+}
+
+function MessageLoadingSkeleton() {
+  return (
+    <div style={styles.skeletonContainer}>
+      {[1, 2, 3].map(i => (
+        <div key={i} style={styles.skeletonBlock}>
+          <div style={{ ...styles.skeletonLine, width: '15%' }} />
+          <div style={{ ...styles.skeletonLine, width: i === 2 ? '70%' : '55%' }} />
+          <div style={{ ...styles.skeletonLine, width: i === 1 ? '40%' : '30%' }} />
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function formatTimestamp(value: string): string {
   return new Date(value).toLocaleString();
@@ -339,5 +428,54 @@ const styles: Record<string, React.CSSProperties> = {
     overflowX: 'hidden',
   },
   loading: { padding: '2rem', textAlign: 'center', color: '#8b949e' },
+  loadingMore: { padding: '12px', textAlign: 'center', color: '#8b949e', fontSize: '0.78rem' },
   emptyState: { display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center', color: '#8b949e' },
+  skeletonContainer: { flex: 1, padding: 16, display: 'flex', flexDirection: 'column', gap: 16, overflow: 'hidden' },
+  skeletonBlock: {
+    borderRadius: 8,
+    border: '1px solid #21262d',
+    padding: 16,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+  },
+  skeletonLine: {
+    height: 14,
+    borderRadius: 6,
+    background: 'linear-gradient(90deg, #161b22 25%, #21262d 50%, #161b22 75%)',
+    backgroundSize: '200% 100%',
+    animation: 'shimmer 1.5s infinite ease-in-out',
+  },
+  reasoningBlock: {
+    border: '1px solid #30363d',
+    borderRadius: 8,
+    background: '#0d1117',
+    overflow: 'hidden',
+  },
+  reasoningToggle: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    width: '100%',
+    background: 'none',
+    border: 'none',
+    color: '#d2a8ff',
+    cursor: 'pointer',
+    fontSize: '0.78rem',
+    fontWeight: 600,
+    padding: '8px 12px',
+  },
+  reasoningIcon: { fontSize: '0.9rem' },
+  reasoningLength: { color: '#8b949e', fontWeight: 400, fontSize: '0.72rem' },
+  reasoningContent: {
+    padding: '0 12px 12px',
+    fontSize: '0.82rem',
+    lineHeight: 1.6,
+    color: '#c9d1d9',
+    whiteSpace: 'pre-wrap',
+    wordBreak: 'break-word',
+    maxHeight: 400,
+    overflowY: 'auto',
+    borderTop: '1px solid #21262d',
+  },
 };
