@@ -191,12 +191,17 @@ function ChatTimeline({ messages }: { messages: ConversationMessage[] }) {
   if (roots.length === 0) return <div style={styles.loading}>No root messages found.</div>;
   return (
     <div style={styles.timelineInner}>
-      <TreeBranch nodeIds={roots.map(r => r.node_id)} nodeMap={nodeMap} />
+      <TreeBranch nodeIds={roots.map(r => r.node_id)} nodeMap={nodeMap} depth={0} />
     </div>
   );
 }
 
 const BRANCH_COLORS = ['#58a6ff', '#7ee787', '#d2a8ff', '#ffa657', '#ff7b72', '#79c0ff', '#f778ba', '#a5d6ff'];
+
+function getColorForBranch(localIndex: number, depth: number): string {
+  const offset = depth * 3;
+  return BRANCH_COLORS[(localIndex + offset) % BRANCH_COLORS.length];
+}
 
 function findScrollParent(el: HTMLElement | null): HTMLElement | null {
   let cur = el;
@@ -205,13 +210,11 @@ function findScrollParent(el: HTMLElement | null): HTMLElement | null {
 }
 
 function useBranchVisibility(branchCount: number, containerRef: React.RefObject<HTMLElement | null>) {
-  const contentTops = useRef<(HTMLElement | null)[]>([]);
-  const contentBottoms = useRef<(HTMLElement | null)[]>([]);
+  const branchRefs = useRef<(HTMLElement | null)[]>([]);
   const thresholds = useRef<{ start: number; end: number }[]>([]);
   const visRef = useRef<boolean[]>(Array(branchCount).fill(true));
   const [visible, setVisible] = useState<boolean[]>(() => Array(branchCount).fill(true));
-  const setTopRef = useCallback((i: number, el: HTMLElement | null) => { contentTops.current[i] = el; }, []);
-  const setBottomRef = useCallback((i: number, el: HTMLElement | null) => { contentBottoms.current[i] = el; }, []);
+  const setBranchRef = useCallback((i: number, el: HTMLElement | null) => { branchRefs.current[i] = el; }, []);
   useEffect(() => {
     const scroll = findScrollParent(containerRef.current);
     if (!scroll) return;
@@ -220,9 +223,10 @@ function useBranchVisibility(branchCount: number, containerRef: React.RefObject<
     const calibrate = () => {
       const sTop = scroll.scrollTop; const sr = scroll.getBoundingClientRect();
       thresholds.current = Array.from({ length: branchCount }, (_, i) => {
-        const t = contentTops.current[i]; const b = contentBottoms.current[i];
-        if (!t || !b) return { start: -Infinity, end: Infinity };
-        return { start: sTop + (t.getBoundingClientRect().top - sr.top), end: sTop + (b.getBoundingClientRect().bottom - sr.top) };
+        const el = branchRefs.current[i];
+        if (!el) return { start: -Infinity, end: Infinity };
+        const rect = el.getBoundingClientRect();
+        return { start: sTop + (rect.top - sr.top), end: sTop + (rect.bottom - sr.top) };
       });
     };
     const scheduleCalibration = (delayMs: number) => {
@@ -243,28 +247,38 @@ function useBranchVisibility(branchCount: number, containerRef: React.RefObject<
     requestAnimationFrame(() => { calibrate(); onScroll(); });
     return () => { scroll.removeEventListener('scroll', onScroll); if (pendingCalibration) clearTimeout(pendingCalibration); };
   }, [branchCount, containerRef]);
-  return { visible, setTopRef, setBottomRef };
+  return { visible, setBranchRef };
 }
 
-function TreeBranch({ nodeIds, nodeMap }: { nodeIds: string[]; nodeMap: Map<string, ConversationMessage> }) {
+function TreeBranch({ nodeIds, nodeMap, depth }: { nodeIds: string[]; nodeMap: Map<string, ConversationMessage>; depth: number }) {
   if (nodeIds.length === 0) return null;
-  if (nodeIds.length === 1) return <LinearChain startNodeId={nodeIds[0]} nodeMap={nodeMap} />;
-  return <ForkContainer nodeIds={nodeIds} nodeMap={nodeMap} />;
+  if (nodeIds.length === 1) return <LinearChain startNodeId={nodeIds[0]} nodeMap={nodeMap} depth={depth} />;
+  return <ForkContainer nodeIds={nodeIds} nodeMap={nodeMap} depth={depth} />;
 }
 
-function ForkContainer({ nodeIds, nodeMap }: { nodeIds: string[]; nodeMap: Map<string, ConversationMessage> }) {
+function ForkContainer({ nodeIds, nodeMap, depth }: { nodeIds: string[]; nodeMap: Map<string, ConversationMessage>; depth: number }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const { visible, setTopRef, setBottomRef } = useBranchVisibility(nodeIds.length, containerRef);
+  const { visible, setBranchRef } = useBranchVisibility(nodeIds.length, containerRef);
   const anyVisible = visible.some(Boolean);
   return (
     <div ref={containerRef} style={styles.forkContainer}>
       {nodeIds.map((nodeId, i) => {
-        const color = BRANCH_COLORS[i % BRANCH_COLORS.length];
+        const color = getColorForBranch(i, depth);
         const isVis = !anyVisible || visible[i];
         return (
-          <div key={nodeId} style={{ ...styles.forkBranch, borderColor: color, flex: isVis ? '1 1 0' : '0 0 3px', minWidth: isVis ? 280 : 3, paddingLeft: isVis ? 12 : 0, overflow: 'hidden' }}>
-            {isVis ? <div style={{ ...styles.forkLabel, background: color }}>Branch {i + 1}</div> : null}
-            <BranchContent startNodeId={nodeId} nodeMap={nodeMap} branchIndex={i} setTopRef={setTopRef} setBottomRef={setBottomRef} />
+          <div
+            key={nodeId}
+            ref={el => setBranchRef(i, el)}
+            style={{
+              ...styles.forkBranch,
+              borderColor: color,
+              flex: isVis ? '1 1 0' : '0 0 3px',
+              minWidth: isVis ? 280 : 3,
+              paddingLeft: isVis ? 12 : 0,
+              overflow: 'hidden',
+            }}
+          >
+            <BranchContent startNodeId={nodeId} nodeMap={nodeMap} depth={depth} />
           </div>
         );
       })}
@@ -272,34 +286,27 @@ function ForkContainer({ nodeIds, nodeMap }: { nodeIds: string[]; nodeMap: Map<s
   );
 }
 
-function BranchContent({ startNodeId, nodeMap, branchIndex, setTopRef, setBottomRef }: { startNodeId: string; nodeMap: Map<string, ConversationMessage>; branchIndex: number; setTopRef: (i: number, el: HTMLElement | null) => void; setBottomRef: (i: number, el: HTMLElement | null) => void }) {
+function BranchContent({ startNodeId, nodeMap, depth }: { startNodeId: string; nodeMap: Map<string, ConversationMessage>; depth: number }) {
   const chain: ConversationMessage[] = [];
   let cur: string | null = startNodeId;
   while (cur) { const n = nodeMap.get(cur); if (!n) break; chain.push(n); cur = n.children.length === 1 ? n.children[0] : null; }
   const last = chain[chain.length - 1];
   const tailChildren = last?.children.length > 1 ? last.children : [];
-  const lastIdx = chain.length - 1;
   return (
     <>
-      {chain.map((n, idx) => {
-        const isFirst = idx === 0, isLast = idx === lastIdx && tailChildren.length === 0;
-        if (isFirst || isLast) {
-          return <div key={n.node_id} ref={el => { if (isFirst) setTopRef(branchIndex, el); if (isLast) setBottomRef(branchIndex, el); }}><MessageCard message={n} /></div>;
-        }
-        return <MessageCard key={n.node_id} message={n} />;
-      })}
-      {tailChildren.length > 1 ? <TreeBranch nodeIds={tailChildren} nodeMap={nodeMap} /> : null}
+      {chain.map(n => <MessageCard key={n.node_id} message={n} />)}
+      {tailChildren.length > 1 ? <TreeBranch nodeIds={tailChildren} nodeMap={nodeMap} depth={depth + 1} /> : null}
     </>
   );
 }
 
-function LinearChain({ startNodeId, nodeMap }: { startNodeId: string; nodeMap: Map<string, ConversationMessage> }) {
+function LinearChain({ startNodeId, nodeMap, depth }: { startNodeId: string; nodeMap: Map<string, ConversationMessage>; depth: number }) {
   const chain: ConversationMessage[] = [];
   let cur: string | null = startNodeId;
   while (cur) { const n = nodeMap.get(cur); if (!n) break; chain.push(n); cur = n.children.length === 1 ? n.children[0] : null; }
   const last = chain[chain.length - 1];
   const tail = last?.children.length > 1 ? last.children : [];
-  return <>{chain.map(n => <MessageCard key={n.node_id} message={n} />)}{tail.length > 1 ? <TreeBranch nodeIds={tail} nodeMap={nodeMap} /> : null}</>;
+  return <>{chain.map(n => <MessageCard key={n.node_id} message={n} />)}{tail.length > 1 ? <TreeBranch nodeIds={tail} nodeMap={nodeMap} depth={depth} /> : null}</>;
 }
 
 function MessageCard({ message }: { message: ConversationMessage }) {
@@ -488,7 +495,6 @@ const styles: Record<string, React.CSSProperties> = {
   reasoningToggle: { display: 'flex', alignItems: 'center', gap: 6, width: '100%', background: 'none', border: 'none', color: '#d2a8ff', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, padding: '8px 12px' },
   reasoningIcon: { fontSize: '0.9rem' }, reasoningLength: { color: '#8b949e', fontWeight: 400, fontSize: '0.72rem' },
   reasoningContent: { padding: '0 12px 12px', fontSize: '0.82rem', lineHeight: 1.6, color: '#c9d1d9', whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 400, overflowY: 'auto', borderTop: '1px solid #21262d' },
-  forkContainer: { display: 'flex', gap: 0, padding: '4px 0', alignItems: 'stretch' },
+  forkContainer: { display: 'flex', gap: 0, padding: '4px 0', alignItems: 'flex-start' },
   forkBranch: { flex: '1 1 0', minWidth: 280, borderLeft: '3px solid', paddingLeft: 12, display: 'flex', flexDirection: fc, gap: 12, transition: 'flex 0.35s ease, min-width 0.35s ease, padding 0.35s ease' },
-  forkLabel: { display: 'inline-block', alignSelf: 'flex-start', fontSize: '0.7rem', fontWeight: 700, color: '#0d1117', padding: '2px 8px', borderRadius: 4, textTransform: uc, letterSpacing: '0.04em' },
 };
