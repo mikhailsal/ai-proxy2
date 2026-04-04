@@ -373,17 +373,24 @@ async def test_flush_loop_cancellation_flushes_remaining(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_resolve_provider_id_unknown_provider(monkeypatch):
-    class FakeSession:
-        async def execute(self, query):
-            return SimpleNamespace(scalar_one_or_none=lambda: None)
+    saved_cache = service._provider_id_cache.copy()
+    service._provider_id_cache.clear()
+    try:
 
-    monkeypatch.setattr(
-        service,
-        "get_app_config",
-        lambda: SimpleNamespace(providers={}),
-    )
-    result = await service._resolve_provider_id(FakeSession(), "nonexistent")
-    assert result is None
+        class FakeSession:
+            async def execute(self, query):
+                return SimpleNamespace(scalar_one_or_none=lambda: None)
+
+        monkeypatch.setattr(
+            service,
+            "get_app_config",
+            lambda: SimpleNamespace(providers={}),
+        )
+        result = await service._resolve_provider_id(FakeSession(), "nonexistent")
+        assert result is None
+    finally:
+        service._provider_id_cache.clear()
+        service._provider_id_cache.update(saved_cache)
 
 
 # ── adapters/base.py: line 50 (error_body is None) ───────────────────

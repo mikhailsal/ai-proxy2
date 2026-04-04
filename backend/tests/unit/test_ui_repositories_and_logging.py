@@ -44,15 +44,16 @@ def make_request_record(**overrides: object) -> SimpleNamespace:
         "stream_chunks": [{"choices": [{"delta": {"content": "world"}}]}],
         "reasoning_tokens": 0,
         "metadata_": {"trace": "abc"},
+        "system_prompt_text": "hello",
+        "first_user_message_text": None,
     }
     payload.update(overrides)
     return SimpleNamespace(**payload)
 
 
 class QueryResult:
-    def __init__(self, data, *, rowcount: int = 3) -> None:
-        self.data = data
-        self.rowcount = rowcount
+    def __init__(self, data, *, rowcount: int = 3):
+        self.data, self.rowcount = data, rowcount
 
     def all(self):
         return self.data
@@ -71,19 +72,16 @@ class QueryResult:
 
 
 class RequestRepoSession:
-    def __init__(self, record: SimpleNamespace) -> None:
-        self.record = record
-        self.executed_queries: list[tuple[str, object]] = []
-        self.committed = False
-        self.refreshed = False
+    def __init__(self, record):
+        self.record, self.executed_queries, self.committed, self.refreshed = record, [], False, False
 
-    def add(self, value) -> None:
+    def add(self, value):
         self.executed_queries.append(("add", value))
 
-    async def commit(self) -> None:
+    async def commit(self):
         self.committed = True
 
-    async def refresh(self, value) -> None:
+    async def refresh(self, value):
         self.refreshed = True
 
     async def execute(self, query):
@@ -103,60 +101,62 @@ class RequestRepoSession:
 class ChatRepoSession:
     def __init__(self, record: SimpleNamespace) -> None:
         self.record = record
-        self.rows = [
-            SimpleNamespace(
-                group_key="hello",
-                message_count=2,
-                first_message=record.timestamp,
-                last_message=record.timestamp,
-                models_used=["gpt-4o-mini"],
-            )
+        ts = record.timestamp
+        self._groups = [
+            SimpleNamespace(group_key="hello", group_label="hello", request_count=1, first_message=ts, last_message=ts)
         ]
+        self._models = [SimpleNamespace(group_key="hello", model="gpt-4o-mini")]
 
     async def execute(self, query):
-        if "group_key" in str(query):
-            return QueryResult(self.rows)
+        q = str(query)
+        if "GROUP BY" in q:
+            return QueryResult(self._groups)
+        if "DISTINCT" in q:
+            return QueryResult(self._models)
         return QueryResult([self.record])
 
 
-class ProviderLookupResult:
-    def __init__(self, value) -> None:
-        self.value = value
+class _LookupResult:
+    def __init__(self, v):
+        self.v = v
 
     def scalar_one_or_none(self):
-        return self.value
+        return self.v
+
+    def scalars(self):
+        return self
+
+    def all(self):
+        return [] if self.v is None else [self.v]
 
 
 class LoggingSession:
-    def __init__(self, provider_value=None) -> None:
-        self.provider_value = provider_value
-        self.added = []
-        self.flushed = False
-        self.committed = False
+    def __init__(self, provider_value=None):
+        self.provider_value, self.added, self.flushed, self.committed = provider_value, [], False, False
 
     async def execute(self, query):
-        return ProviderLookupResult(self.provider_value)
+        return _LookupResult(self.provider_value)
 
-    def add(self, value) -> None:
+    def add(self, value):
         self.added.append(value)
 
-    async def flush(self) -> None:
+    async def flush(self):
         self.flushed = True
         self.added[-1].id = 12
 
-    async def commit(self) -> None:
+    async def commit(self):
         self.committed = True
 
 
 class SessionContext:
-    def __init__(self, session: LoggingSession) -> None:
-        self.session = session
+    def __init__(self, s):
+        self.session = s
 
-    async def __aenter__(self) -> LoggingSession:
+    async def __aenter__(self):
         return self.session
 
-    async def __aexit__(self, exc_type, exc, tb) -> None:
-        return None
+    async def __aexit__(self, *a):
+        pass
 
 
 @pytest.mark.asyncio
@@ -448,44 +448,36 @@ async def test_logging_service_enqueue_and_flush_without_engine(monkeypatch: pyt
 
 @pytest.mark.asyncio
 async def test_logging_service_provider_resolution_and_batch_write(monkeypatch: pytest.MonkeyPatch) -> None:
-    provider = SimpleNamespace(id=7)
-    existing_session = LoggingSession(provider_value=provider)
-    missing_session = LoggingSession(provider_value=None)
-    monkeypatch.setattr(
-        service,
-        "get_app_config",
-        lambda: SimpleNamespace(
-            providers={
-                "provider": SimpleNamespace(
-                    endpoint="https://provider.example",
-                    type="openai_compatible",
-                    headers={"X-Test": "1"},
-                    timeout=15,
-                    fallback_for="primary",
-                )
-            }
-        ),
-    )
-
-    assert await service._resolve_provider_id(existing_session, "provider") == 7
-    assert await service._resolve_provider_id(missing_session, None) is None
-    assert await service._resolve_provider_id(missing_session, "provider") == 12
-    assert missing_session.flushed is True
-
-    session_for_batch = LoggingSession(provider_value=provider)
-
-    def session_factory() -> SessionContext:
-        return SessionContext(session_for_batch)
-
-    entry = LogEntry(
-        provider_name="provider",
-        request_body={"token": "secret-token"},
-        request_headers={"Authorization": "Bearer secret"},
-    )
-    await service._write_batch(session_factory, [entry])
-
-    assert session_for_batch.committed is True
-    assert session_for_batch.added
+    saved = service._provider_id_cache.copy()
+    service._provider_id_cache.clear()
+    try:
+        prov = SimpleNamespace(id=7, name="provider")
+        prov_cfg = SimpleNamespace(
+            endpoint="https://provider.example",
+            type="openai_compatible",
+            headers={"X-Test": "1"},
+            timeout=15,
+            fallback_for="primary",
+        )
+        monkeypatch.setattr(service, "get_app_config", lambda: SimpleNamespace(providers={"provider": prov_cfg}))
+        assert await service._resolve_provider_id(LoggingSession(prov), "provider") == 7
+        assert await service._resolve_provider_id(LoggingSession(), None) is None
+        service._provider_id_cache.clear()
+        ms = LoggingSession()
+        assert await service._resolve_provider_id(ms, "provider") == 12
+        assert ms.flushed is True
+        service._provider_id_cache.clear()
+        bs = LoggingSession(SimpleNamespace(id=7, name="provider"))
+        entry = LogEntry(
+            provider_name="provider",
+            request_body={"token": "secret-token"},
+            request_headers={"Authorization": "Bearer secret"},
+        )
+        await service._write_batch(lambda: SessionContext(bs), [entry])
+        assert bs.committed and bs.added
+    finally:
+        service._provider_id_cache.clear()
+        service._provider_id_cache.update(saved)
 
 
 @pytest.mark.asyncio

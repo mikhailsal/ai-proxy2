@@ -30,6 +30,8 @@ def make_request_record(**overrides):
         ),
         "response_body": overrides.pop("response_body", None),
         "created_at": overrides.pop("created_at", datetime.now(timezone.utc)),
+        "system_prompt_text": overrides.pop("system_prompt_text", None),
+        "first_user_message_text": overrides.pop("first_user_message_text", "hello"),
     }
     base.update(overrides)
     return SimpleNamespace(**base)
@@ -54,6 +56,8 @@ def test_chat_repository_helper_branches() -> None:
         model_resolved="resolved-model",
         request_body=request_body,
         response_body={"choices": [{"message": {"role": "assistant", "content": [{"text": "done"}]}}]},
+        system_prompt_text=None,
+        first_user_message_text=None,
     )
 
     assert chat_repo._request_messages(None) == []
@@ -87,11 +91,9 @@ def test_chat_repository_helper_branches() -> None:
 
 @pytest.mark.asyncio
 async def test_get_conversation_messages_returns_empty_for_missing_group() -> None:
-    record = make_request_record(client_api_key_hash="known")
-
     class EmptyGroupSession:
         async def execute(self, _query):
-            return QueryResult([record])
+            return QueryResult([])
 
     assert (
         await chat_repo.get_conversation_messages(

@@ -120,8 +120,7 @@ async def test_list_requests_and_search_requests_apply_filters() -> None:
     assert "proxy_requests.timestamp >=" in list_query
     assert "proxy_requests.timestamp <=" in list_query
     assert "LIMIT" in list_query
-    assert "like" in search_query.lower()
-    assert "cast" in search_query.lower()
+    assert "plainto_tsquery" in search_query.lower() or "@@" in search_query
 
 
 @pytest.mark.asyncio

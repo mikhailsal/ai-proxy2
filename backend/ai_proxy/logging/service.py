@@ -72,10 +72,21 @@ async def _flush_loop(batch_size: int = 50, flush_interval: float = 5.0) -> None
             logger.exception("flush_loop_error", batch_size=len(entries))
 
 
+_provider_id_cache: dict[str, int | None] = {}
+
+
 async def _write_batch(session_factory: async_sessionmaker[AsyncSession], entries: list[LogEntry]) -> None:
     async with session_factory() as session:
+        needed_names = {e.provider_name for e in entries if e.provider_name is not None}
+        uncached_names = needed_names - _provider_id_cache.keys()
+        if uncached_names:
+            await _warm_provider_cache(session, uncached_names)
+
         for entry in entries:
-            provider_id = await _resolve_provider_id(session, entry.provider_name)
+            provider_id = _provider_id_cache.get(entry.provider_name) if entry.provider_name else None
+            if entry.provider_name and provider_id is None and entry.provider_name not in _provider_id_cache:
+                provider_id = await _resolve_provider_id(session, entry.provider_name)
+
             db_request = ProxyRequest(
                 id=entry.id,
                 timestamp=entry.timestamp,
@@ -115,17 +126,30 @@ async def _write_batch(session_factory: async_sessionmaker[AsyncSession], entrie
         logger.debug("batch_written", count=len(entries))
 
 
+async def _warm_provider_cache(session: AsyncSession, names: set[str]) -> None:
+    """Batch-load provider IDs for all names in a single query."""
+    result = await session.execute(select(Provider).where(Provider.name.in_(names)))
+    for provider in result.scalars().all():
+        _provider_id_cache[provider.name] = provider.id
+
+
 async def _resolve_provider_id(session: AsyncSession, provider_name: str | None) -> int | None:
     if provider_name is None:
         return None
 
+    cached = _provider_id_cache.get(provider_name)
+    if cached is not None:
+        return cached
+
     existing = await session.execute(select(Provider).where(Provider.name == provider_name))
     provider = existing.scalar_one_or_none()
     if provider is not None:
+        _provider_id_cache[provider_name] = provider.id
         return provider.id
 
     provider_config = get_app_config().providers.get(provider_name)
     if provider_config is None:
+        _provider_id_cache[provider_name] = None
         return None
 
     settings_json: dict[str, Any] = {
@@ -143,6 +167,7 @@ async def _resolve_provider_id(session: AsyncSession, provider_name: str | None)
     )
     session.add(provider)
     await session.flush()
+    _provider_id_cache[provider_name] = provider.id
     return provider.id
 
 

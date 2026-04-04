@@ -282,12 +282,24 @@ async def test_chat_repository_grouping_branches() -> None:
         def scalars(self):
             return SimpleNamespace(all=lambda: self.rows)
 
-    rows = [SimpleNamespace(group_key=None, message_count=1, first_message=None, last_message=None, models_used=None)]
+    group_rows = [
+        SimpleNamespace(
+            group_key=None,
+            group_label=None,
+            request_count=1,
+            first_message=None,
+            last_message=None,
+        )
+    ]
+    model_rows = []
 
     class FakeSession:
         async def execute(self, query):
-            if "GROUP BY" in str(query):
-                return Result(rows)
+            query_str = str(query)
+            if "GROUP BY" in query_str:
+                return Result(group_rows)
+            if "DISTINCT" in query_str:
+                return Result(model_rows)
             return Result([record])
 
     from ai_proxy.db.repositories import chats as chats_repo
@@ -295,9 +307,9 @@ async def test_chat_repository_grouping_branches() -> None:
     session = FakeSession()
     assert await chats_repo.get_conversations(session, group_by="client", limit=10, offset=0) == [
         {
-            "group_key": "unknown",
-            "group_label": "unknown",
-            "message_count": 0,
+            "group_key": None,
+            "group_label": None,
+            "message_count": 1,
             "request_count": 1,
             "first_message": None,
             "last_message": None,

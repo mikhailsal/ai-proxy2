@@ -83,10 +83,15 @@ class ProxyRequest(Base):
     provider: Mapped[Provider | None] = relationship(back_populates="requests")
     debug_logs: Mapped[list["ProviderDebugLog"]] = relationship(back_populates="proxy_request")
 
+    system_prompt_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    first_user_message_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     __table_args__ = (
         Index("ix_request_body_gin", "request_body", postgresql_using="gin"),
         Index("ix_response_body_gin", "response_body", postgresql_using="gin"),
         Index("ix_proxy_requests_search_vector", "search_vector", postgresql_using="gin"),
+        Index("ix_proxy_requests_system_prompt_text", "system_prompt_text", postgresql_using="hash"),
+        Index("ix_proxy_requests_first_user_message_text", "first_user_message_text", postgresql_using="hash"),
     )
 
 

@@ -5,7 +5,8 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import desc, select
+from sqlalchemy import case, desc, func, literal, select
+from sqlalchemy.orm import load_only
 
 from ai_proxy.db.models import ProxyRequest
 
@@ -123,10 +124,14 @@ def _group_identity(request: ProxyRequest, group_by: str) -> tuple[str, str]:
         value = getattr(request, "model_requested", None) or getattr(request, "model_resolved", None) or "unknown"
         return value, value
 
-    system_message = _first_message_by_role(request_body, "system")
-    first_user_message = _first_message_by_role(request_body, "user")
-    system_text = _message_display_text(system_message) if system_message else ""
-    user_text = _message_display_text(first_user_message) if first_user_message else ""
+    system_text = getattr(request, "system_prompt_text", None) or ""
+    user_text = getattr(request, "first_user_message_text", None) or ""
+
+    if not system_text and not user_text:
+        system_message = _first_message_by_role(request_body, "system")
+        first_user_message = _first_message_by_role(request_body, "user")
+        system_text = _message_display_text(system_message) if system_message else ""
+        user_text = _message_display_text(first_user_message) if first_user_message else ""
 
     if group_by == "system_prompt_first_user":
         group_key = json.dumps(
@@ -258,6 +263,70 @@ def build_conversation_messages(requests: list[ProxyRequest]) -> list[dict[str, 
     return result
 
 
+def _group_key_expression(group_by: str):
+    """Return a SQL expression for the conversation group key."""
+    if group_by == "client":
+        return func.coalesce(ProxyRequest.client_api_key_hash, literal("unknown"))
+
+    if group_by == "model":
+        return func.coalesce(
+            ProxyRequest.model_requested,
+            ProxyRequest.model_resolved,
+            literal("unknown"),
+        )
+
+    system = func.coalesce(ProxyRequest.system_prompt_text, literal(""))
+    user = func.coalesce(ProxyRequest.first_user_message_text, literal(""))
+
+    if group_by == "system_prompt_first_user":
+        return func.concat(
+            literal('{"first_user_message": "'),
+            user,
+            literal('", "system_prompt": "'),
+            system,
+            literal('"}'),
+        )
+
+    return case(
+        (ProxyRequest.system_prompt_text.isnot(None), ProxyRequest.system_prompt_text),
+        (ProxyRequest.first_user_message_text.isnot(None), ProxyRequest.first_user_message_text),
+        else_=literal("unknown"),
+    )
+
+
+def _group_label_expression(group_by: str):
+    """Return a SQL expression for the conversation group display label."""
+    if group_by == "client":
+        return func.coalesce(ProxyRequest.client_api_key_hash, literal("unknown"))
+
+    if group_by == "model":
+        return func.coalesce(
+            ProxyRequest.model_requested,
+            ProxyRequest.model_resolved,
+            literal("unknown"),
+        )
+
+    system = func.coalesce(ProxyRequest.system_prompt_text, literal(""))
+    user = func.coalesce(ProxyRequest.first_user_message_text, literal(""))
+
+    if group_by == "system_prompt_first_user":
+        return case(
+            (
+                (ProxyRequest.system_prompt_text.isnot(None)) & (ProxyRequest.first_user_message_text.isnot(None)),
+                func.concat(literal("System: "), system, literal("\nUser: "), user),
+            ),
+            (ProxyRequest.system_prompt_text.isnot(None), func.concat(literal("System: "), system)),
+            (ProxyRequest.first_user_message_text.isnot(None), func.concat(literal("User: "), user)),
+            else_=literal("unknown"),
+        )
+
+    return case(
+        (ProxyRequest.system_prompt_text.isnot(None), ProxyRequest.system_prompt_text),
+        (ProxyRequest.first_user_message_text.isnot(None), ProxyRequest.first_user_message_text),
+        else_=literal("unknown"),
+    )
+
+
 async def get_conversations(
     session: AsyncSession,
     *,
@@ -265,54 +334,56 @@ async def get_conversations(
     limit: int = 50,
     offset: int = 0,
 ) -> list[dict[str, Any]]:
-    query = select(ProxyRequest).order_by(desc(ProxyRequest.timestamp), desc(ProxyRequest.id))
-    result = await session.execute(query)
-    records = list(result.scalars().all())
+    group_key_expr = _group_key_expression(group_by)
+    group_label_expr = _group_label_expression(group_by)
 
-    grouped: dict[str, dict[str, Any]] = {}
-    for record in records:
-        group_key, group_label = _group_identity(record, group_by)
-        conversation = grouped.setdefault(
-            group_key,
-            {
-                "group_key": group_key,
-                "group_label": group_label,
-                "_records": [],
-                "_first": getattr(record, "timestamp", None),
-                "_last": getattr(record, "timestamp", None),
-                "models_used": [],
-            },
+    groups_query = (
+        select(
+            group_key_expr.label("group_key"),
+            group_label_expr.label("group_label"),
+            func.count(ProxyRequest.id).label("request_count"),
+            func.min(ProxyRequest.timestamp).label("first_message"),
+            func.max(ProxyRequest.timestamp).label("last_message"),
         )
-        conversation["_records"].append(record)
+        .group_by(group_key_expr, group_label_expr)
+        .order_by(desc(func.max(ProxyRequest.timestamp)))
+        .offset(offset)
+        .limit(limit)
+    )
+    result = await session.execute(groups_query)
+    rows = result.all()
 
-        timestamp = getattr(record, "timestamp", None)
-        if conversation["_first"] is None or (timestamp and timestamp < conversation["_first"]):
-            conversation["_first"] = timestamp
-        if conversation["_last"] is None or (timestamp and timestamp > conversation["_last"]):
-            conversation["_last"] = timestamp
-
-        model = getattr(record, "model_requested", None) or getattr(record, "model_resolved", None)
-        if model and model not in conversation["models_used"]:
-            conversation["models_used"].append(model)
+    group_keys = [row.group_key for row in rows]
+    models_by_group: dict[str, list[str]] = {}
+    if group_keys:
+        models_query = (
+            select(
+                group_key_expr.label("group_key"),
+                func.coalesce(ProxyRequest.model_requested, ProxyRequest.model_resolved).label("model"),
+            )
+            .where(group_key_expr.in_(group_keys))
+            .where(func.coalesce(ProxyRequest.model_requested, ProxyRequest.model_resolved).isnot(None))
+            .distinct()
+        )
+        models_result = await session.execute(models_query)
+        for mrow in models_result.all():
+            models_by_group.setdefault(mrow.group_key, []).append(mrow.model)
 
     conversations: list[dict[str, Any]] = []
-    for conversation in grouped.values():
-        requests_in_conversation = conversation.pop("_records")
-        messages = build_conversation_messages(requests_in_conversation)
+    for row in rows:
         conversations.append(
             {
-                "group_key": conversation["group_key"],
-                "group_label": conversation["group_label"],
-                "message_count": len(messages),
-                "request_count": len(requests_in_conversation),
-                "first_message": _isoformat(conversation.pop("_first")),
-                "last_message": _isoformat(conversation.pop("_last")),
-                "models_used": conversation["models_used"],
+                "group_key": row.group_key,
+                "group_label": row.group_label,
+                "message_count": row.request_count,
+                "request_count": row.request_count,
+                "first_message": _isoformat(row.first_message),
+                "last_message": _isoformat(row.last_message),
+                "models_used": models_by_group.get(row.group_key, []),
             }
         )
 
-    conversations.sort(key=lambda item: item["last_message"] or "", reverse=True)
-    return conversations[offset : offset + limit]
+    return conversations
 
 
 async def get_conversation_messages(
@@ -320,7 +391,27 @@ async def get_conversation_messages(
     group_key: str,
     group_by: str = "system_prompt",
 ) -> list[dict[str, Any]]:
-    query = select(ProxyRequest).order_by(ProxyRequest.timestamp, ProxyRequest.id)
+    group_key_expr = _group_key_expression(group_by)
+    query = (
+        select(ProxyRequest)
+        .options(
+            load_only(
+                ProxyRequest.id,
+                ProxyRequest.timestamp,
+                ProxyRequest.request_body,
+                ProxyRequest.response_body,
+                ProxyRequest.model_requested,
+                ProxyRequest.model_resolved,
+                ProxyRequest.latency_ms,
+                ProxyRequest.total_tokens,
+                ProxyRequest.system_prompt_text,
+                ProxyRequest.first_user_message_text,
+                ProxyRequest.client_api_key_hash,
+            )
+        )
+        .where(group_key_expr == group_key)
+        .order_by(ProxyRequest.timestamp, ProxyRequest.id)
+    )
     result = await session.execute(query)
-    requests = [request for request in result.scalars().all() if _group_identity(request, group_by)[0] == group_key]
+    requests = list(result.scalars().all())
     return build_conversation_messages(requests)

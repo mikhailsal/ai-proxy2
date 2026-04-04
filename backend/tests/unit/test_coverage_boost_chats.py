@@ -39,6 +39,8 @@ def _make_record(**overrides):
         "stream_chunks": None,
         "reasoning_tokens": None,
         "metadata_": None,
+        "system_prompt_text": None,
+        "first_user_message_text": None,
     }
     payload.update(overrides)
     return SimpleNamespace(**payload)
@@ -99,6 +101,7 @@ def test_group_identity_model_mode():
 def test_group_identity_system_prompt_first_user_with_system_only():
     record = _make_record(
         request_body={"messages": [{"role": "system", "content": "be helpful"}]},
+        system_prompt_text="be helpful",
     )
     key, label = chat_repo._group_identity(record, "system_prompt_first_user")
     assert "System:" in label
@@ -108,6 +111,7 @@ def test_group_identity_system_prompt_first_user_with_system_only():
 def test_group_identity_system_prompt_first_user_with_user_only():
     record = _make_record(
         request_body={"messages": [{"role": "user", "content": "hello"}]},
+        first_user_message_text="hello",
     )
     key, label = chat_repo._group_identity(record, "system_prompt_first_user")
     assert "User:" in label

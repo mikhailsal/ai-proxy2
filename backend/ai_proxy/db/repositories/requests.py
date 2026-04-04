@@ -4,11 +4,11 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Text, cast, desc, func, select
 from sqlalchemy import delete as sql_delete
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ai_proxy.db.models import ProxyRequest
+from ai_proxy.db.models import Provider, ProxyRequest
 
 
 async def create_request(session: AsyncSession, **kwargs: Any) -> ProxyRequest:
@@ -46,6 +46,8 @@ async def list_requests(
         query = query.where(ProxyRequest.client_api_key_hash == client_hash)
     if status_code:
         query = query.where(ProxyRequest.response_status_code == status_code)
+    if provider_name:
+        query = query.join(Provider, ProxyRequest.provider_id == Provider.id).where(Provider.name == provider_name)
     if since:
         query = query.where(ProxyRequest.timestamp >= since)
     if until:
@@ -61,12 +63,10 @@ async def search_requests(
     query_text: str,
     limit: int = 50,
 ) -> list[ProxyRequest]:
+    ts_query = func.plainto_tsquery("english", query_text)
     query = (
         select(ProxyRequest)
-        .where(
-            cast(ProxyRequest.request_body, Text).ilike(f"%{query_text}%")
-            | cast(ProxyRequest.response_body, Text).ilike(f"%{query_text}%")
-        )
+        .where(ProxyRequest.search_vector.op("@@")(ts_query))
         .order_by(desc(ProxyRequest.timestamp))
         .limit(limit)
     )
