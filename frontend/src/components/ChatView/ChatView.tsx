@@ -198,40 +198,85 @@ function ChatTimeline({ messages }: { messages: ConversationMessage[] }) {
 
 const BRANCH_COLORS = ['#58a6ff', '#7ee787', '#d2a8ff', '#ffa657', '#ff7b72', '#79c0ff', '#f778ba', '#a5d6ff'];
 
-function TreeBranch({ nodeIds, nodeMap }: { nodeIds: string[]; nodeMap: Map<string, ConversationMessage> }) {
-  if (nodeIds.length === 0) return null;
-  if (nodeIds.length === 1) return <LinearChain startNodeId={nodeIds[0]} nodeMap={nodeMap} />;
+function collectChain(id: string, nodeMap: Map<string, ConversationMessage>) {
+  const chain: ConversationMessage[] = [];
+  let cur: string | null = id;
+  while (cur) { const n = nodeMap.get(cur); if (!n) break; chain.push(n); cur = n.children.length === 1 ? n.children[0] : null; }
+  const last = chain[chain.length - 1];
+  return { chain, tail: last?.children.length > 1 ? last.children : [] as string[] };
+}
+
+function GhostLines({ colors }: { colors: string[] }) {
+  if (colors.length === 0) return null;
+  return <div style={styles.ghostLineGroup}>{colors.map((c, i) => <div key={i} style={{ ...styles.ghostLine, background: c }} />)}</div>;
+}
+
+function BranchRemainder({ chain, tail, color, nodeMap }: { chain: ConversationMessage[]; tail: string[]; color: string; nodeMap: Map<string, ConversationMessage> }) {
   return (
-    <div style={styles.forkContainer}>
-      {nodeIds.map((nodeId, index) => {
-        const color = BRANCH_COLORS[index % BRANCH_COLORS.length];
-        return (
-          <div key={nodeId} style={{ ...styles.forkBranch, borderColor: color }}>
-            <div style={{ ...styles.forkLabel, background: color }}>Branch {index + 1}</div>
-            <LinearChain startNodeId={nodeId} nodeMap={nodeMap} />
-          </div>
-        );
-      })}
+    <div style={{ ...styles.forkBranch, borderColor: color }}>
+      {chain.map(n => <MessageCard key={n.node_id} message={n} />)}
+      {tail.length > 1 ? <TreeBranch nodeIds={tail} nodeMap={nodeMap} /> : null}
     </div>
   );
 }
 
-function LinearChain({ startNodeId, nodeMap }: { startNodeId: string; nodeMap: Map<string, ConversationMessage> }) {
-  const chain: ConversationMessage[] = [];
-  let cur: string | null = startNodeId;
-  while (cur) {
-    const node = nodeMap.get(cur);
-    if (!node) break;
-    chain.push(node);
-    cur = node.children.length === 1 ? node.children[0] : null;
-  }
-  const last = chain[chain.length - 1];
-  return (
-    <>
-      {chain.map(n => <MessageCard key={n.node_id} message={n} />)}
-      {last && last.children.length > 1 ? <TreeBranch nodeIds={last.children} nodeMap={nodeMap} /> : null}
-    </>
+function TreeBranch({ nodeIds, nodeMap }: { nodeIds: string[]; nodeMap: Map<string, ConversationMessage> }) {
+  if (nodeIds.length === 0) return null;
+  if (nodeIds.length === 1) return <LinearChain startNodeId={nodeIds[0]} nodeMap={nodeMap} />;
+  const branches = nodeIds.map((nodeId, i) => {
+    const { chain, tail } = collectChain(nodeId, nodeMap);
+    return { nodeId, chain, tail, color: BRANCH_COLORS[i % BRANCH_COLORS.length], index: i };
+  });
+  const minLen = Math.min(...branches.map(b => b.chain.length));
+  const ended = branches.filter(b => b.chain.length <= minLen && b.tail.length === 0);
+  const cont = branches.filter(b => b.chain.length > minLen || b.tail.length > 0);
+  if (ended.length === 0) return (
+    <div style={styles.forkContainer}>{branches.map(b => (
+      <div key={b.nodeId} style={{ ...styles.forkBranch, borderColor: b.color }}>
+        <div style={{ ...styles.forkLabel, background: b.color }}>Branch {b.index + 1}</div>
+        {b.chain.map(n => <MessageCard key={n.node_id} message={n} />)}
+        {b.tail.length > 1 ? <TreeBranch nodeIds={b.tail} nodeMap={nodeMap} /> : null}
+      </div>
+    ))}</div>
   );
+  const ghostColors = ended.map(b => b.color);
+  return (<>
+    <div style={styles.forkContainer}>{branches.map(b => (
+      <div key={b.nodeId} style={{ ...styles.forkBranch, borderColor: b.color }}>
+        <div style={{ ...styles.forkLabel, background: b.color }}>Branch {b.index + 1}</div>
+        {b.chain.slice(0, minLen).map(n => <MessageCard key={n.node_id} message={n} />)}
+        {b.chain.length <= minLen && b.tail.length === 0 ? (
+          <div style={{ ...styles.branchEndedTag, borderColor: b.color }}>
+            <span style={{ ...styles.branchEndedDot, background: b.color }} />Branch {b.index + 1} ended
+          </div>
+        ) : null}
+      </div>
+    ))}</div>
+    {cont.length > 1 ? (
+      <div style={styles.continuationZone}>
+        <GhostLines colors={ghostColors} />
+        <div style={{ ...styles.forkContainer, flex: 1 }}>{cont.map(b => (
+          <BranchRemainder key={b.nodeId} chain={b.chain.slice(minLen)} tail={b.tail} color={b.color} nodeMap={nodeMap} />
+        ))}</div>
+      </div>
+    ) : cont.length === 1 ? (
+      <div style={styles.continuationZone}>
+        <GhostLines colors={ghostColors} />
+        <div style={styles.continuationContent}>
+          <div style={{ ...styles.continuationBar, background: cont[0].color }} />
+          <div style={styles.continuationMessages}>
+            {cont[0].chain.slice(minLen).map(n => <MessageCard key={n.node_id} message={n} />)}
+            {cont[0].tail.length > 1 ? <TreeBranch nodeIds={cont[0].tail} nodeMap={nodeMap} /> : null}
+          </div>
+        </div>
+      </div>
+    ) : null}
+  </>);
+}
+
+function LinearChain({ startNodeId, nodeMap }: { startNodeId: string; nodeMap: Map<string, ConversationMessage> }) {
+  const { chain, tail } = collectChain(startNodeId, nodeMap);
+  return <>{chain.map(n => <MessageCard key={n.node_id} message={n} />)}{tail.length > 1 ? <TreeBranch nodeIds={tail} nodeMap={nodeMap} /> : null}</>;
 }
 
 function MessageCard({ message }: { message: ConversationMessage }) {
@@ -325,66 +370,26 @@ function AssistantToolCallsPanel({ toolCalls }: { toolCalls: AssistantToolCall[]
   );
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
+function isRecord(v: unknown): v is Record<string, unknown> { return typeof v === 'object' && v !== null && !Array.isArray(v); }
+function asObject(v: unknown): Record<string, unknown> | null { return isRecord(v) ? v : null; }
 
-function asObject(value: unknown): Record<string, unknown> | null {
-  return isRecord(value) ? value : null;
-}
-
-interface AssistantToolCall {
-  id: string | null;
-  type: string | null;
-  functionName: string;
-  arguments: unknown;
-}
+interface AssistantToolCall { id: string | null; type: string | null; functionName: string; arguments: unknown; }
 
 function getAssistantToolCalls(message: ConversationMessage): AssistantToolCall[] {
-  if (message.role !== 'assistant' || !isRecord(message.raw_message)) {
-    return [];
-  }
-
+  if (message.role !== 'assistant' || !isRecord(message.raw_message)) return [];
   const toolCalls = message.raw_message.tool_calls;
-  if (!Array.isArray(toolCalls)) {
-    return [];
-  }
-
-  return toolCalls
-    .filter((toolCall): toolCall is Record<string, unknown> => isRecord(toolCall))
-    .map(toolCall => {
-      const fn = asObject(toolCall.function);
-      const rawArguments = typeof fn?.arguments === 'string' ? fn.arguments : null;
-      return {
-        id: typeof toolCall.id === 'string' ? toolCall.id : null,
-        type: typeof toolCall.type === 'string' ? toolCall.type : null,
-        functionName: typeof fn?.name === 'string' ? fn.name : 'unknown_tool',
-        arguments: parseToolArguments(rawArguments),
-      };
-    });
-}
-
-function parseToolArguments(rawArguments: string | null): unknown {
-  if (!rawArguments) {
-    return {};
-  }
-
-  try {
-    return JSON.parse(rawArguments) as unknown;
-  } catch {
-    return rawArguments;
-  }
+  if (!Array.isArray(toolCalls)) return [];
+  return toolCalls.filter((tc): tc is Record<string, unknown> => isRecord(tc)).map(tc => {
+    const fn = asObject(tc.function);
+    const raw = typeof fn?.arguments === 'string' ? fn.arguments : null;
+    return { id: typeof tc.id === 'string' ? tc.id : null, type: typeof tc.type === 'string' ? tc.type : null, functionName: typeof fn?.name === 'string' ? fn.name : 'unknown_tool', arguments: raw ? (() => { try { return JSON.parse(raw); } catch { return raw; } })() : {} };
+  });
 }
 
 function getReasoningContent(message: ConversationMessage): string | null {
-  if (message.role !== 'assistant' || !isRecord(message.raw_message)) {
-    return null;
-  }
-
-  const text =
-    (typeof message.raw_message.reasoning_content === 'string' ? message.raw_message.reasoning_content : null) ??
-    (typeof message.raw_message.reasoning === 'string' ? message.raw_message.reasoning : null);
-
+  if (message.role !== 'assistant' || !isRecord(message.raw_message)) return null;
+  const rm = message.raw_message;
+  const text = (typeof rm.reasoning_content === 'string' ? rm.reasoning_content : null) ?? (typeof rm.reasoning === 'string' ? rm.reasoning : null);
   return text?.trim() || null;
 }
 
@@ -423,9 +428,10 @@ function roleBadgeStyle(role: string): React.CSSProperties {
   };
 }
 
-const S: Record<string, React.CSSProperties> = {
+const fc = 'column' as const, uc = 'uppercase' as const, it = 'italic' as const;
+const styles: Record<string, React.CSSProperties> = {
   container: { display: 'flex', height: '100%', overflow: 'hidden' },
-  sidebar: { width: 280, borderRight: '1px solid #21262d', display: 'flex', flexDirection: 'column', flexShrink: 0 },
+  sidebar: { width: 280, borderRight: '1px solid #21262d', display: 'flex', flexDirection: fc, flexShrink: 0 },
   sidebarHeader: { padding: '8px 12px', borderBottom: '1px solid #21262d', display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 },
   sidebarTitle: { fontSize: '0.85rem', fontWeight: 600, color: '#e6edf3', flex: 1 },
   select: { background: '#0d1117', border: '1px solid #30363d', borderRadius: 4, color: '#e6edf3', padding: '2px 4px', fontSize: '0.75rem', outline: 'none' },
@@ -433,36 +439,41 @@ const S: Record<string, React.CSSProperties> = {
   convItem: { padding: '8px 12px', cursor: 'pointer', borderBottom: '1px solid #21262d' },
   convPreview: { fontSize: '0.82rem', color: '#e6edf3', marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   convMeta: { display: 'flex', gap: 8, fontSize: '0.75rem', color: '#8b949e' },
-  timeline: { flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' },
-  timelineInner: { flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 16 },
-  requestBlock: { borderRadius: 8, border: '1px solid #21262d', padding: 12, display: 'flex', flexDirection: 'column', gap: 8 },
+  timeline: { flex: 1, overflow: 'hidden', display: 'flex', flexDirection: fc },
+  timelineInner: { flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: fc, gap: 16 },
+  requestBlock: { borderRadius: 8, border: '1px solid #21262d', padding: 12, display: 'flex', flexDirection: fc, gap: 8 },
   requestMeta: { display: 'flex', gap: 8, fontSize: '0.75rem', color: '#8b949e', flexWrap: 'wrap', alignItems: 'center' },
-  reqLabel: { fontWeight: 700, color: '#58a6ff', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em' },
+  reqLabel: { fontWeight: 700, color: '#58a6ff', fontSize: '0.72rem', textTransform: uc, letterSpacing: '0.05em' },
   reqModel: { color: '#e6edf3', fontWeight: 500 },
   bubble: { padding: '8px 12px', color: '#e6edf3', fontSize: '0.85rem', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' },
   bubbleRole: { fontSize: '0.72rem', fontWeight: 600, color: '#8b949e', marginBottom: 4, textTransform: 'capitalize' },
   toggleDetail: { background: 'none', border: 'none', color: '#8b949e', cursor: 'pointer', fontSize: '0.75rem', alignSelf: 'flex-start', padding: '2px 0' },
-  rawRequestPanel: { display: 'flex', flexDirection: 'column', gap: 6, overflow: 'hidden', borderRadius: 6, border: '1px solid #21262d', background: '#0d1117' },
-  toolCallsPanel: { border: '1px solid #30363d', borderRadius: 8, background: '#0d1117', padding: 10, display: 'flex', flexDirection: 'column', gap: 10 },
-  toolCallsTitle: { fontSize: '0.78rem', fontWeight: 700, color: '#ffa657', textTransform: 'uppercase', letterSpacing: '0.04em' },
-  toolCallCard: { border: '1px solid #21262d', borderRadius: 6, padding: 10, background: '#11161d', display: 'flex', flexDirection: 'column', gap: 8, overflow: 'hidden' },
+  rawRequestPanel: { display: 'flex', flexDirection: fc, gap: 6, overflow: 'hidden', borderRadius: 6, border: '1px solid #21262d', background: '#0d1117' },
+  toolCallsPanel: { border: '1px solid #30363d', borderRadius: 8, background: '#0d1117', padding: 10, display: 'flex', flexDirection: fc, gap: 10 },
+  toolCallsTitle: { fontSize: '0.78rem', fontWeight: 700, color: '#ffa657', textTransform: uc, letterSpacing: '0.04em' },
+  toolCallCard: { border: '1px solid #21262d', borderRadius: 6, padding: 10, background: '#11161d', display: 'flex', flexDirection: fc, gap: 8, overflow: 'hidden' },
   toolCallHeader: { display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' },
-  toolCallName: { color: '#e6edf3', fontWeight: 600 },
-  toolCallMeta: { color: '#8b949e', fontSize: '0.75rem' },
+  toolCallName: { color: '#e6edf3', fontWeight: 600 }, toolCallMeta: { color: '#8b949e', fontSize: '0.75rem' },
   toolCallPre: { margin: 0, fontFamily: 'monospace', fontSize: '0.77rem', lineHeight: 1.5, color: '#c9d1d9', whiteSpace: 'pre-wrap', wordBreak: 'break-word', overflowWrap: 'anywhere', overflowX: 'hidden' },
   loading: { padding: '2rem', textAlign: 'center', color: '#8b949e' },
   loadingMore: { padding: '12px', textAlign: 'center', color: '#8b949e', fontSize: '0.78rem' },
   emptyState: { display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center', color: '#8b949e' },
-  skeletonContainer: { flex: 1, padding: 16, display: 'flex', flexDirection: 'column', gap: 16, overflow: 'hidden' },
-  skeletonBlock: { borderRadius: 8, border: '1px solid #21262d', padding: 16, display: 'flex', flexDirection: 'column', gap: 10 },
+  skeletonContainer: { flex: 1, padding: 16, display: 'flex', flexDirection: fc, gap: 16, overflow: 'hidden' },
+  skeletonBlock: { borderRadius: 8, border: '1px solid #21262d', padding: 16, display: 'flex', flexDirection: fc, gap: 10 },
   skeletonLine: { height: 14, borderRadius: 6, background: 'linear-gradient(90deg, #161b22 25%, #21262d 50%, #161b22 75%)', backgroundSize: '200% 100%', animation: 'shimmer 1.5s infinite ease-in-out' },
   reasoningBlock: { border: '1px solid #30363d', borderRadius: 8, background: '#0d1117', overflow: 'hidden' },
   reasoningToggle: { display: 'flex', alignItems: 'center', gap: 6, width: '100%', background: 'none', border: 'none', color: '#d2a8ff', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, padding: '8px 12px' },
-  reasoningIcon: { fontSize: '0.9rem' },
-  reasoningLength: { color: '#8b949e', fontWeight: 400, fontSize: '0.72rem' },
+  reasoningIcon: { fontSize: '0.9rem' }, reasoningLength: { color: '#8b949e', fontWeight: 400, fontSize: '0.72rem' },
   reasoningContent: { padding: '0 12px 12px', fontSize: '0.82rem', lineHeight: 1.6, color: '#c9d1d9', whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 400, overflowY: 'auto', borderTop: '1px solid #21262d' },
   forkContainer: { display: 'flex', gap: 12, padding: '4px 0', alignItems: 'stretch' },
-  forkBranch: { flex: '1 1 0', minWidth: 320, borderLeft: '3px solid', borderRadius: 6, paddingLeft: 12, display: 'flex', flexDirection: 'column' as const, gap: 12 },
-  forkLabel: { display: 'inline-block', alignSelf: 'flex-start', fontSize: '0.7rem', fontWeight: 700, color: '#0d1117', padding: '2px 8px', borderRadius: 4, textTransform: 'uppercase' as const, letterSpacing: '0.04em' },
+  forkBranch: { flex: '1 1 0', minWidth: 280, borderLeft: '3px solid', borderRadius: 6, paddingLeft: 12, display: 'flex', flexDirection: fc, gap: 12 },
+  forkLabel: { display: 'inline-block', alignSelf: 'flex-start', fontSize: '0.7rem', fontWeight: 700, color: '#0d1117', padding: '2px 8px', borderRadius: 4, textTransform: uc, letterSpacing: '0.04em' },
+  branchEndedTag: { display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.72rem', color: '#8b949e', fontStyle: it, padding: '6px 0', borderTop: '1px dashed', marginTop: 4 },
+  branchEndedDot: { width: 6, height: 6, borderRadius: '50%', flexShrink: 0 },
+  continuationZone: { display: 'flex', gap: 0, padding: '4px 0' },
+  continuationContent: { flex: 1, display: 'flex', gap: 0, minWidth: 0 },
+  continuationBar: { width: 3, borderRadius: 2, flexShrink: 0, marginRight: 12 },
+  continuationMessages: { flex: 1, display: 'flex', flexDirection: fc, gap: 12, minWidth: 0 },
+  ghostLineGroup: { display: 'flex', gap: 4, alignItems: 'stretch', padding: '0 6px', flexShrink: 0 },
+  ghostLine: { width: 2, borderRadius: 1, opacity: 0.3, minHeight: 20 },
 };
-const styles = S;
