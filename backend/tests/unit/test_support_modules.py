@@ -216,8 +216,10 @@ def test_registry_and_routing(monkeypatch: pytest.MonkeyPatch) -> None:
     assert set(registry) == {"primary", "secondary"}
     assert registry["primary"].api_key == "secret-key"
     assert get_adapter_registry() == registry
-    assert _parse_mapping("provider:model") == ("provider", "model")
-    assert _parse_mapping("provider") == ("provider", "provider")
+    assert _parse_mapping("provider:model") == ("provider", "model", None)
+    assert _parse_mapping("provider") == ("provider", "provider", None)
+    assert _parse_mapping("provider:model+slug") == ("provider", "model", ["slug"])
+    assert _parse_mapping("provider:model+a,b") == ("provider", "model", ["a", "b"])
 
     monkeypatch.setattr(routing, "get_app_config", lambda: config)
     monkeypatch.setattr(routing, "get_adapter_registry", lambda: registry)

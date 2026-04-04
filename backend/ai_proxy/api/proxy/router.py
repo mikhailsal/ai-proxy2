@@ -106,6 +106,23 @@ def _extract_error_message(response_body: Any, fallback: str | None = None) -> s
     return fallback
 
 
+def _apply_provider_pinning(body: JsonObject, route: RouteResult) -> None:
+    """Inject ``provider.order`` from route's pinned providers.
+
+    Client-supplied ``provider.order`` always takes priority; other client
+    ``provider`` fields are preserved when we inject ``order``.
+    """
+    if not getattr(route, "pinned_providers", None):
+        return
+
+    existing = body.get("provider")
+    if isinstance(existing, dict):
+        if "order" not in existing:
+            existing["order"] = route.pinned_providers
+    else:
+        body["provider"] = {"order": route.pinned_providers}
+
+
 async def _parse_request_body(request: Request) -> JsonObject | JSONResponse:
     try:
         body = await request.json()
@@ -188,10 +205,10 @@ async def chat_completions(request: Request) -> Response:
     client_request_body: JsonObject = dict(body)
     forward_body: JsonObject = {**body, "model": route.mapped_model}
     forward_headers = dict(request.headers)
+    _apply_provider_pinning(forward_body, route)
     forward_body, forward_headers = apply_modifications(
         forward_body, forward_headers, route.provider_name, route.mapped_model
     )
-
     is_streaming = bool(body.get("stream", False))
     if is_streaming:
         return await _handle_streaming(
