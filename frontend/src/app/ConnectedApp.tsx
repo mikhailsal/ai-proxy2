@@ -1,5 +1,6 @@
 import { ChatWorkspace } from './ChatWorkspace';
 import { RequestsWorkspace } from './RequestsWorkspace';
+import { AppIcon } from '../components/common/AppIcon';
 import { StatsBar } from '../components/common/StatsBar';
 import { useNavigationState } from './useNavigationState';
 
@@ -48,6 +49,7 @@ interface NavigationBarProps {
 function NavigationBar({ activeTab, onDisconnect, onSelectTab }: NavigationBarProps) {
   return (
     <div style={styles.nav}>
+      <AppIcon size={22} />
       <span style={styles.navTitle}>AI Proxy v2</span>
       <button
         style={{ ...styles.navTab, ...(activeTab === 'requests' ? styles.navTabActive : {}) }}

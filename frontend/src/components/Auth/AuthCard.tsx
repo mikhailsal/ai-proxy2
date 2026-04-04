@@ -1,4 +1,5 @@
 import type { FormEvent } from 'react';
+import { AppIcon } from '../common/AppIcon';
 
 interface AuthCardProps {
   baseUrl: string;
@@ -21,7 +22,7 @@ export function AuthCard({
 }: AuthCardProps) {
   return (
     <div style={styles.card}>
-      <h1 style={styles.title}>AI Proxy v2</h1>
+      <h1 style={styles.title}><AppIcon size={28} /> AI Proxy v2</h1>
       <p style={styles.subtitle}>Connect to your proxy backend</p>
       <form onSubmit={event => void onSubmit(event)} style={styles.form}>
         <ConnectionField
@@ -87,7 +88,7 @@ const styles: Record<string, React.CSSProperties> = {
     width: 360,
     color: '#e6edf3',
   },
-  title: { margin: '0 0 0.25rem', fontSize: '1.5rem', fontWeight: 700 },
+  title: { margin: '0 0 0.25rem', fontSize: '1.5rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem' },
   subtitle: { margin: '0 0 1.5rem', color: '#8b949e', fontSize: '0.9rem' },
   form: { display: 'flex', flexDirection: 'column', gap: '1rem' },
   label: { display: 'flex', flexDirection: 'column', gap: '0.25rem', fontSize: '0.85rem', color: '#8b949e' },
