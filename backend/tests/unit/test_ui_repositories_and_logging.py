@@ -365,16 +365,19 @@ def test_build_conversation_messages_merges_repeated_history() -> None:
     messages = chat_repo.build_conversation_messages([first, second])
 
     assert [message["content"] for message in messages] == [
-        "second reply",
-        "follow up",
-        "first reply",
-        "hello",
         "system prompt",
+        "hello",
+        "first reply",
+        "follow up",
+        "second reply",
     ]
-    assert messages[-1]["repeat_count"] == 2
-    assert messages[-2]["repeat_count"] == 2
-    assert messages[-3]["repeat_count"] == 2
-    assert messages[1]["source_request_id"] == str(second.id)
+    assert messages[0]["repeat_count"] == 2
+    assert messages[1]["repeat_count"] == 2
+    assert messages[2]["repeat_count"] == 2
+    assert messages[3]["source_request_id"] == str(second.id)
+    assert messages[0]["parent"] is None
+    assert messages[1]["parent"] == messages[0]["node_id"]
+    assert messages[2]["children"] == [messages[3]["node_id"]]
 
 
 def test_masking_helpers_and_log_entry_factory() -> None:

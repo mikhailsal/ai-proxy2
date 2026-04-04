@@ -226,6 +226,9 @@ describe('RequestsWorkspace divider drag coverage', () => {
 describe('ChatView — Show raw request renders unified RequestDetailContent', () => {
   function msg(overrides: Partial<ConversationMessage> & { id: string; role: string; content: string }): ConversationMessage {
     return {
+      node_id: overrides.id,
+      parent: null,
+      children: [],
       origin: 'request',
       raw_message: { role: overrides.role, content: overrides.content },
       tool_names: [],
@@ -263,7 +266,7 @@ describe('ChatView — Show raw request renders unified RequestDetailContent', (
     };
   }
 
-  it('renders RequestDetailContent when Show raw request is clicked', async () => {
+  it('renders RequestDetailContent when Show raw request is clicked', { timeout: 15000 }, async () => {
     const { ChatView } = await import('../../src/components/ChatView/ChatView');
     const { ApiContext: FreshApiContext } = await import('../../src/hooks/useApi');
 

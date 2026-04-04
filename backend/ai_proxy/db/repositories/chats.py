@@ -95,7 +95,24 @@ def _message_display_text(message: dict[str, Any]) -> str:
 
 
 def _message_signature(message: dict[str, Any]) -> str:
-    return json.dumps(message, sort_keys=True, ensure_ascii=True, separators=(",", ":"))
+    """Produce a stable signature from semantic fields only (role, content, tool_calls).
+
+    Response objects from the API often carry extra fields (refusal, logprobs, etc.)
+    that differ from the same message when it reappears in a subsequent request's
+    history.  Using only semantic fields ensures they merge correctly in the tree.
+    """
+    semantic: dict[str, Any] = {}
+    if "role" in message:
+        semantic["role"] = message["role"]
+    if "content" in message:
+        semantic["content"] = message["content"]
+    if "tool_calls" in message:
+        semantic["tool_calls"] = message["tool_calls"]
+    if "tool_call_id" in message:
+        semantic["tool_call_id"] = message["tool_call_id"]
+    if "name" in message and message.get("role") == "tool":
+        semantic["name"] = message["name"]
+    return json.dumps(semantic, sort_keys=True, ensure_ascii=True, separators=(",", ":"))
 
 
 def _first_message_by_role(request_body: Any, role: str) -> dict[str, Any] | None:
@@ -215,63 +232,90 @@ def _message_entry(
     }
 
 
+class _TreeBuilder:
+    """Incrementally builds a trie of conversation messages."""
+
+    def __init__(self) -> None:
+        self.nodes: dict[str, dict[str, Any]] = {}
+        self.root_ids: list[str] = []
+        self._ordinal = 0
+
+    def insert(
+        self,
+        message: dict[str, Any],
+        request: ProxyRequest,
+        origin: str,
+        source_message_index: int,
+        parent_id: str | None,
+    ) -> str:
+        signature = _message_signature(message)
+        node_id = f"{parent_id or 'root'}::{signature}"
+
+        if node_id in self.nodes:
+            self.nodes[node_id]["repeat_count"] += 1
+            self.nodes[node_id]["last_seen_at"] = _isoformat(getattr(request, "timestamp", None))
+            return node_id
+
+        entry = _message_entry(
+            message=message,
+            request=request,
+            ordinal=self._ordinal,
+            origin=origin,
+            source_message_index=source_message_index,
+        )
+        self._ordinal += 1
+        entry.update(node_id=node_id, parent=parent_id, children=[])
+        self.nodes[node_id] = entry
+
+        if parent_id is None:
+            if node_id not in self.root_ids:
+                self.root_ids.append(node_id)
+        elif node_id not in self.nodes[parent_id]["children"]:
+            self.nodes[parent_id]["children"].append(node_id)
+
+        return node_id
+
+    def to_list(self) -> list[dict[str, Any]]:
+        result: list[dict[str, Any]] = []
+        visited: set[str] = set()
+
+        def walk(node_id: str) -> None:
+            if node_id in visited:
+                return
+            visited.add(node_id)
+            node = {k: v for k, v in self.nodes[node_id].items() if not k.startswith("_")}
+            result.append(node)
+            for child_id in self.nodes[node_id]["children"]:
+                walk(child_id)
+
+        for rid in self.root_ids:
+            walk(rid)
+        return result
+
+
 def build_conversation_messages(requests: list[ProxyRequest]) -> list[dict[str, Any]]:
-    ordered_requests = sorted(
+    """Build a tree of conversation messages from related requests.
+
+    Returns a flat list of tree nodes in depth-first order, each carrying
+    ``node_id``, ``parent``, and ``children`` fields that encode the topology.
+    """
+    ordered = sorted(
         requests,
-        key=lambda request: (
-            getattr(request, "timestamp", None) or "",
-            str(getattr(request, "id", "")),
-        ),
+        key=lambda r: (getattr(r, "timestamp", None) or "", str(getattr(r, "id", ""))),
     )
-    timeline: list[dict[str, Any]] = []
+    tree = _TreeBuilder()
 
-    for request in ordered_requests:
-        position = 0
-        request_messages = _request_messages(getattr(request, "request_body", None))
-        for source_message_index, message in enumerate(request_messages):
-            signature = _message_signature(message)
-            if position < len(timeline) and timeline[position]["_signature"] == signature:
-                timeline[position]["repeat_count"] += 1
-                timeline[position]["last_seen_at"] = _isoformat(getattr(request, "timestamp", None))
-                position += 1
-                continue
+    for request in ordered:
+        parent_id: str | None = None
+        msgs = _request_messages(getattr(request, "request_body", None))
+        for idx, message in enumerate(msgs):
+            parent_id = tree.insert(message, request, "request", idx, parent_id)
 
-            timeline.append(
-                _message_entry(
-                    message=message,
-                    request=request,
-                    ordinal=len(timeline),
-                    origin="request",
-                    source_message_index=source_message_index,
-                )
-            )
-            position += 1
+        assistant = _assistant_response_message(getattr(request, "response_body", None))
+        if assistant:
+            tree.insert(assistant, request, "response", len(msgs), parent_id)
 
-        assistant_message = _assistant_response_message(getattr(request, "response_body", None))
-        if assistant_message:
-            signature = _message_signature(assistant_message)
-            if position < len(timeline) and timeline[position]["_signature"] == signature:
-                timeline[position]["repeat_count"] += 1
-                timeline[position]["last_seen_at"] = _isoformat(getattr(request, "timestamp", None))
-                continue
-
-            timeline.append(
-                _message_entry(
-                    message=assistant_message,
-                    request=request,
-                    ordinal=len(timeline),
-                    origin="response",
-                    source_message_index=len(request_messages),
-                )
-            )
-
-    result: list[dict[str, Any]] = []
-    for item in reversed(timeline):
-        public_item = dict(item)
-        public_item.pop("_signature", None)
-        public_item.pop("_ordinal", None)
-        result.append(public_item)
-    return result
+    return tree.to_list()
 
 
 def _group_key_expression(group_by: str):

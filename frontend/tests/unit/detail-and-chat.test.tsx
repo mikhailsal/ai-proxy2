@@ -390,7 +390,7 @@ describe('ChatView', () => {
     expect(screen.getByText('"city"')).toBeInTheDocument();
     expect(screen.getAllByText('sent 2x')).toHaveLength(3);
     expect(
-      screen.getByText('reply').compareDocumentPosition(screen.getByText('hello')) & Node.DOCUMENT_POSITION_FOLLOWING,
+      screen.getByText('system prompt').compareDocumentPosition(screen.getByText('hello')) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
 
     await userEvent.click(screen.getAllByRole('button', { name: 'Show raw request' })[0]);
@@ -471,6 +471,9 @@ function makeRequestDetail(overrides?: Partial<RequestDetailType>): RequestDetai
 
 function msg(overrides: Partial<ConversationMessage> & { id: string; role: string; content: string }): ConversationMessage {
   return {
+    node_id: overrides.id,
+    parent: null,
+    children: [],
     origin: 'request', raw_message: { role: overrides.role, content: overrides.content },
     tool_names: [], meta_tags: {}, source_request_id: 'req-1',
     source_request_timestamp: '2024-01-01T00:00:00Z', source_message_index: 0,
@@ -481,13 +484,13 @@ function msg(overrides: Partial<ConversationMessage> & { id: string; role: strin
 
 function makeConversationMessages(): ConversationMessage[] {
   return [
-    msg({ id: 'msg-3', origin: 'response', role: 'assistant', content: 'reply',
-      last_seen_at: '2024-01-01T00:00:00Z', repeat_count: 1, source_message_index: 2 }),
-    msg({ id: 'msg-2b', origin: 'response', role: 'assistant', content: 'Tool call: lookup_weather',
+    msg({ id: 'msg-1', node_id: 'n1', parent: null, children: ['n2'], role: 'system', content: 'system prompt', meta_tags: { name: 'system' } }),
+    msg({ id: 'msg-2', node_id: 'n2', parent: 'n1', children: ['n2b', 'n3'], role: 'user', content: 'hello', source_message_index: 1 }),
+    msg({ id: 'msg-2b', node_id: 'n2b', parent: 'n2', children: [], origin: 'response', role: 'assistant', content: 'Tool call: lookup_weather',
       raw_message: { role: 'assistant', content: '', tool_calls: [
         { id: 'call_weather_1', type: 'function', function: { name: 'lookup_weather', arguments: '{"city":"Berlin"}' } },
       ] }, tool_names: ['lookup_weather'], source_message_index: 2 }),
-    msg({ id: 'msg-2', role: 'user', content: 'hello', source_message_index: 1 }),
-    msg({ id: 'msg-1', role: 'system', content: 'system prompt', meta_tags: { name: 'system' } }),
+    msg({ id: 'msg-3', node_id: 'n3', parent: 'n2', children: [], origin: 'response', role: 'assistant', content: 'reply',
+      last_seen_at: '2024-01-01T00:00:00Z', repeat_count: 1, source_message_index: 2 }),
   ];
 }

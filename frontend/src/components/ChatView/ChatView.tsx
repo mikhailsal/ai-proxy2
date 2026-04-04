@@ -184,16 +184,53 @@ function ConversationRow({
 }
 
 function ChatTimeline({ messages }: { messages: ConversationMessage[] }) {
-  if (messages.length === 0) {
-    return <div style={styles.loading}>No messages in this conversation.</div>;
-  }
-
+  if (messages.length === 0) return <div style={styles.loading}>No messages in this conversation.</div>;
+  const nodeMap = new Map<string, ConversationMessage>();
+  for (const m of messages) nodeMap.set(m.node_id, m);
+  const roots = messages.filter(m => m.parent === null);
+  if (roots.length === 0) return <div style={styles.loading}>No root messages found.</div>;
   return (
     <div style={styles.timelineInner}>
-      {messages.map(message => (
-        <MessageCard key={message.id} message={message} />
-      ))}
+      <TreeBranch nodeIds={roots.map(r => r.node_id)} nodeMap={nodeMap} />
     </div>
+  );
+}
+
+const BRANCH_COLORS = ['#58a6ff', '#7ee787', '#d2a8ff', '#ffa657', '#ff7b72', '#79c0ff', '#f778ba', '#a5d6ff'];
+
+function TreeBranch({ nodeIds, nodeMap }: { nodeIds: string[]; nodeMap: Map<string, ConversationMessage> }) {
+  if (nodeIds.length === 0) return null;
+  if (nodeIds.length === 1) return <LinearChain startNodeId={nodeIds[0]} nodeMap={nodeMap} />;
+  return (
+    <div style={styles.forkContainer}>
+      {nodeIds.map((nodeId, index) => {
+        const color = BRANCH_COLORS[index % BRANCH_COLORS.length];
+        return (
+          <div key={nodeId} style={{ ...styles.forkBranch, borderColor: color }}>
+            <div style={{ ...styles.forkLabel, background: color }}>Branch {index + 1}</div>
+            <LinearChain startNodeId={nodeId} nodeMap={nodeMap} />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function LinearChain({ startNodeId, nodeMap }: { startNodeId: string; nodeMap: Map<string, ConversationMessage> }) {
+  const chain: ConversationMessage[] = [];
+  let cur: string | null = startNodeId;
+  while (cur) {
+    const node = nodeMap.get(cur);
+    if (!node) break;
+    chain.push(node);
+    cur = node.children.length === 1 ? node.children[0] : null;
+  }
+  const last = chain[chain.length - 1];
+  return (
+    <>
+      {chain.map(n => <MessageCard key={n.node_id} message={n} />)}
+      {last && last.children.length > 1 ? <TreeBranch nodeIds={last.children} nodeMap={nodeMap} /> : null}
+    </>
   );
 }
 
@@ -386,7 +423,7 @@ function roleBadgeStyle(role: string): React.CSSProperties {
   };
 }
 
-const styles: Record<string, React.CSSProperties> = {
+const S: Record<string, React.CSSProperties> = {
   container: { display: 'flex', height: '100%', overflow: 'hidden' },
   sidebar: { width: 280, borderRight: '1px solid #21262d', display: 'flex', flexDirection: 'column', flexShrink: 0 },
   sidebarHeader: { padding: '8px 12px', borderBottom: '1px solid #21262d', display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 },
@@ -401,13 +438,9 @@ const styles: Record<string, React.CSSProperties> = {
   requestBlock: { borderRadius: 8, border: '1px solid #21262d', padding: 12, display: 'flex', flexDirection: 'column', gap: 8 },
   requestMeta: { display: 'flex', gap: 8, fontSize: '0.75rem', color: '#8b949e', flexWrap: 'wrap', alignItems: 'center' },
   reqLabel: { fontWeight: 700, color: '#58a6ff', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em' },
-  reqTime: {},
   reqModel: { color: '#e6edf3', fontWeight: 500 },
-  reqLatency: {},
-  reqTokens: {},
   bubble: { padding: '8px 12px', color: '#e6edf3', fontSize: '0.85rem', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' },
   bubbleRole: { fontSize: '0.72rem', fontWeight: 600, color: '#8b949e', marginBottom: 4, textTransform: 'capitalize' },
-  bubbleContent: {},
   toggleDetail: { background: 'none', border: 'none', color: '#8b949e', cursor: 'pointer', fontSize: '0.75rem', alignSelf: 'flex-start', padding: '2px 0' },
   rawRequestPanel: { display: 'flex', flexDirection: 'column', gap: 6, overflow: 'hidden', borderRadius: 6, border: '1px solid #21262d', background: '#0d1117' },
   toolCallsPanel: { border: '1px solid #30363d', borderRadius: 8, background: '#0d1117', padding: 10, display: 'flex', flexDirection: 'column', gap: 10 },
@@ -416,66 +449,20 @@ const styles: Record<string, React.CSSProperties> = {
   toolCallHeader: { display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' },
   toolCallName: { color: '#e6edf3', fontWeight: 600 },
   toolCallMeta: { color: '#8b949e', fontSize: '0.75rem' },
-  toolCallPre: {
-    margin: 0,
-    fontFamily: 'monospace',
-    fontSize: '0.77rem',
-    lineHeight: 1.5,
-    color: '#c9d1d9',
-    whiteSpace: 'pre-wrap',
-    wordBreak: 'break-word',
-    overflowWrap: 'anywhere',
-    overflowX: 'hidden',
-  },
+  toolCallPre: { margin: 0, fontFamily: 'monospace', fontSize: '0.77rem', lineHeight: 1.5, color: '#c9d1d9', whiteSpace: 'pre-wrap', wordBreak: 'break-word', overflowWrap: 'anywhere', overflowX: 'hidden' },
   loading: { padding: '2rem', textAlign: 'center', color: '#8b949e' },
   loadingMore: { padding: '12px', textAlign: 'center', color: '#8b949e', fontSize: '0.78rem' },
   emptyState: { display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center', color: '#8b949e' },
   skeletonContainer: { flex: 1, padding: 16, display: 'flex', flexDirection: 'column', gap: 16, overflow: 'hidden' },
-  skeletonBlock: {
-    borderRadius: 8,
-    border: '1px solid #21262d',
-    padding: 16,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 10,
-  },
-  skeletonLine: {
-    height: 14,
-    borderRadius: 6,
-    background: 'linear-gradient(90deg, #161b22 25%, #21262d 50%, #161b22 75%)',
-    backgroundSize: '200% 100%',
-    animation: 'shimmer 1.5s infinite ease-in-out',
-  },
-  reasoningBlock: {
-    border: '1px solid #30363d',
-    borderRadius: 8,
-    background: '#0d1117',
-    overflow: 'hidden',
-  },
-  reasoningToggle: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 6,
-    width: '100%',
-    background: 'none',
-    border: 'none',
-    color: '#d2a8ff',
-    cursor: 'pointer',
-    fontSize: '0.78rem',
-    fontWeight: 600,
-    padding: '8px 12px',
-  },
+  skeletonBlock: { borderRadius: 8, border: '1px solid #21262d', padding: 16, display: 'flex', flexDirection: 'column', gap: 10 },
+  skeletonLine: { height: 14, borderRadius: 6, background: 'linear-gradient(90deg, #161b22 25%, #21262d 50%, #161b22 75%)', backgroundSize: '200% 100%', animation: 'shimmer 1.5s infinite ease-in-out' },
+  reasoningBlock: { border: '1px solid #30363d', borderRadius: 8, background: '#0d1117', overflow: 'hidden' },
+  reasoningToggle: { display: 'flex', alignItems: 'center', gap: 6, width: '100%', background: 'none', border: 'none', color: '#d2a8ff', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, padding: '8px 12px' },
   reasoningIcon: { fontSize: '0.9rem' },
   reasoningLength: { color: '#8b949e', fontWeight: 400, fontSize: '0.72rem' },
-  reasoningContent: {
-    padding: '0 12px 12px',
-    fontSize: '0.82rem',
-    lineHeight: 1.6,
-    color: '#c9d1d9',
-    whiteSpace: 'pre-wrap',
-    wordBreak: 'break-word',
-    maxHeight: 400,
-    overflowY: 'auto',
-    borderTop: '1px solid #21262d',
-  },
+  reasoningContent: { padding: '0 12px 12px', fontSize: '0.82rem', lineHeight: 1.6, color: '#c9d1d9', whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 400, overflowY: 'auto', borderTop: '1px solid #21262d' },
+  forkContainer: { display: 'flex', gap: 12, padding: '4px 0', alignItems: 'stretch' },
+  forkBranch: { flex: '1 1 0', minWidth: 320, borderLeft: '3px solid', borderRadius: 6, paddingLeft: 12, display: 'flex', flexDirection: 'column' as const, gap: 12 },
+  forkLabel: { display: 'inline-block', alignSelf: 'flex-start', fontSize: '0.7rem', fontWeight: 700, color: '#0d1117', padding: '2px 8px', borderRadius: 4, textTransform: 'uppercase' as const, letterSpacing: '0.04em' },
 };
+const styles = S;

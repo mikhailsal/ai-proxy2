@@ -63,6 +63,9 @@ export interface ConversationsPage {
 
 export interface ConversationMessage {
   id: string;
+  node_id: string;
+  parent: string | null;
+  children: string[];
   origin: 'request' | 'response';
   role: string;
   content: string;
