@@ -223,7 +223,7 @@ describe('RequestsWorkspace divider drag coverage', () => {
   });
 });
 
-describe('ChatView — getVisibleRequestMessageIndexes edge cases', () => {
+describe('ChatView — Show raw request renders unified RequestDetailContent', () => {
   function msg(overrides: Partial<ConversationMessage> & { id: string; role: string; content: string }): ConversationMessage {
     return {
       origin: 'request',
@@ -263,7 +263,7 @@ describe('ChatView — getVisibleRequestMessageIndexes edge cases', () => {
     };
   }
 
-  it('covers request origin with visible message index and fallback when no roles match', async () => {
+  it('renders RequestDetailContent when Show raw request is clicked', async () => {
     const { ChatView } = await import('../../src/components/ChatView/ChatView');
     const { ApiContext: FreshApiContext } = await import('../../src/hooks/useApi');
 
@@ -274,13 +274,6 @@ describe('ChatView — getVisibleRequestMessageIndexes edge cases', () => {
         role: 'user',
         content: 'hello',
         source_message_index: 0,
-      }),
-      msg({
-        id: 'msg-2',
-        origin: 'response',
-        role: 'assistant',
-        content: 'world',
-        source_message_index: 1,
       }),
     ];
 
@@ -305,11 +298,11 @@ describe('ChatView — getVisibleRequestMessageIndexes edge cases', () => {
     );
 
     await waitFor(() => expect(screen.getByText('hello')).toBeInTheDocument());
-    expect(screen.getByText('world')).toBeInTheDocument();
 
     const showRawButtons = screen.getAllByRole('button', { name: 'Show raw request' });
     await userEvent.click(showRawButtons[0]);
     await waitFor(() => expect(api.getRequest).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByText('Request Body')).toBeInTheDocument());
   });
 });
 

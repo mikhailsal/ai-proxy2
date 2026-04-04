@@ -3,8 +3,9 @@ import { useQuery } from '@tanstack/react-query';
 import type { ChatGroupBy } from '../../app/navigation';
 import { useApi } from '../../hooks/useApi';
 import { useAutoRefresh } from '../../hooks/autoRefreshContext';
-import type { Conversation, ConversationMessage, RequestDetail } from '../../types';
+import type { Conversation, ConversationMessage } from '../../types';
 import { JsonViewer } from '../JsonViewer/JsonViewer';
+import { RequestDetailContent } from '../RequestDetail/RequestDetail';
 
 interface ChatViewProps {
   groupBy: ChatGroupBy;
@@ -198,53 +199,9 @@ function ChatBubble({ role, content }: { role: string; content: string }) {
 }
 
 function MessageRawRequest({ message }: { message: ConversationMessage }) {
-  const api = useApi();
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['request', message.source_request_id],
-    queryFn: () => api.getRequest(message.source_request_id),
-    enabled: true,
-  });
-
-  if (isLoading) {
-    return <div style={styles.loadingInline}>Loading raw request…</div>;
-  }
-
-  if (error) {
-    return <div style={styles.rawError}>{error instanceof Error ? error.message : String(error)}</div>;
-  }
-
-  if (!data) {
-    return null;
-  }
-
   return (
     <div style={styles.rawRequestPanel}>
-      <div style={styles.rawRequestMeta}>
-        Source request {data.id.slice(0, 8)}… {formatTimestamp(data.timestamp)}
-      </div>
-      <div style={styles.rawSectionTitle}>Request body</div>
-      <pre style={styles.rawPre}>
-        <JsonViewer
-          data={getRawRequestBody(data)}
-          collapsedPaths={getCollapsedRequestPaths(data, message)}
-        />
-      </pre>
-      {hasRawResponseBody(data) ? (
-        <>
-          <div style={styles.rawSectionTitle}>Response body</div>
-          <pre style={styles.rawPre}>
-            <JsonViewer
-              data={getRawResponseBody(data)}
-              expandedPaths={[
-                'choices.0.message',
-                'choices.0.message.tool_calls',
-                'choices.0.message.tool_calls.0',
-                'choices.0.message.tool_calls.0.function',
-              ]}
-            />
-          </pre>
-        </>
-      ) : null}
+      <RequestDetailContent requestId={message.source_request_id} />
     </div>
   );
 }
@@ -269,48 +226,12 @@ function AssistantToolCallsPanel({ toolCalls }: { toolCalls: AssistantToolCall[]
   );
 }
 
-function getRawRequestBody(request: RequestDetail): Record<string, unknown> {
-  return asObject(request.request_body) ?? {};
-}
-
-function getRawResponseBody(request: RequestDetail): Record<string, unknown> {
-  return asObject(request.response_body) ?? {};
-}
-
-function hasRawResponseBody(request: RequestDetail): boolean {
-  return Object.keys(getRawResponseBody(request)).length > 0;
-}
-
-function getCollapsedRequestPaths(request: RequestDetail, message: ConversationMessage): string[] {
-  const requestBody = getRawRequestBody(request);
-  const requestMessages = getRequestMessages(request);
-  const visibleIndexes = getVisibleRequestMessageIndexes(requestMessages, message);
-  if (!Array.isArray(requestBody.messages)) {
-    return [];
-  }
-
-  return requestMessages
-    .map((_, index) => index)
-    .filter(index => !visibleIndexes.includes(index))
-    .map(index => `messages.${index}`);
-}
-
-function getRequestMessages(request: RequestDetail): Array<Record<string, unknown>> {
-  const requestBody = getRawRequestBody(request);
-  const messages = requestBody.messages;
-  if (!Array.isArray(messages)) {
-    return [];
-  }
-
-  return messages.filter((item): item is Record<string, unknown> => isRecord(item));
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function asObject(value: unknown): Record<string, unknown> | null {
   return isRecord(value) ? value : null;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 interface AssistantToolCall {
@@ -356,50 +277,6 @@ function parseToolArguments(rawArguments: string | null): unknown {
   }
 }
 
-function getVisibleRequestMessageIndexes(
-  messages: Array<Record<string, unknown>>,
-  message: ConversationMessage,
-): number[] {
-  const maxIndex = message.origin === 'response'
-    ? messages.length - 1
-    : Math.min(message.source_message_index, messages.length - 1);
-
-  if (maxIndex < 0) {
-    return [];
-  }
-
-  const visible = new Set<number>();
-  if (message.origin === 'request' && message.source_message_index < messages.length) {
-    visible.add(message.source_message_index);
-  }
-
-  for (const role of ['assistant', 'tool', 'user']) {
-    const index = findLastMessageIndexByRole(messages, role, maxIndex);
-    if (index >= 0) {
-      visible.add(index);
-    }
-  }
-
-  if (visible.size === 0) {
-    visible.add(maxIndex);
-  }
-
-  return [...visible].sort((left, right) => left - right);
-}
-
-function findLastMessageIndexByRole(
-  messages: Array<Record<string, unknown>>,
-  role: string,
-  maxIndex: number,
-): number {
-  for (let index = maxIndex; index >= 0; index -= 1) {
-    if (messages[index]?.role === role) {
-      return index;
-    }
-  }
-
-  return -1;
-}
 
 function formatTimestamp(value: string): string {
   return new Date(value).toLocaleString();
@@ -445,23 +322,7 @@ const styles: Record<string, React.CSSProperties> = {
   bubbleRole: { fontSize: '0.72rem', fontWeight: 600, color: '#8b949e', marginBottom: 4, textTransform: 'capitalize' },
   bubbleContent: {},
   toggleDetail: { background: 'none', border: 'none', color: '#8b949e', cursor: 'pointer', fontSize: '0.75rem', alignSelf: 'flex-start', padding: '2px 0' },
-  rawPre: {
-    background: '#0d1117',
-    borderRadius: 4,
-    padding: 8,
-    fontSize: '0.75rem',
-    color: '#8b949e',
-    margin: 0,
-    whiteSpace: 'pre-wrap',
-    wordBreak: 'break-word',
-    overflowWrap: 'anywhere',
-    overflowX: 'hidden',
-  },
-  rawRequestPanel: { display: 'flex', flexDirection: 'column', gap: 6, overflow: 'hidden' },
-  rawRequestMeta: { color: '#8b949e', fontSize: '0.75rem' },
-  rawSectionTitle: { color: '#e6edf3', fontSize: '0.78rem', fontWeight: 600 },
-  rawError: { color: '#f85149', fontSize: '0.78rem' },
-  loadingInline: { color: '#8b949e', fontSize: '0.78rem' },
+  rawRequestPanel: { display: 'flex', flexDirection: 'column', gap: 6, overflow: 'hidden', borderRadius: 6, border: '1px solid #21262d', background: '#0d1117' },
   toolCallsPanel: { border: '1px solid #30363d', borderRadius: 8, background: '#0d1117', padding: 10, display: 'flex', flexDirection: 'column', gap: 10 },
   toolCallsTitle: { fontSize: '0.78rem', fontWeight: 700, color: '#ffa657', textTransform: 'uppercase', letterSpacing: '0.04em' },
   toolCallCard: { border: '1px solid #21262d', borderRadius: 6, padding: 10, background: '#11161d', display: 'flex', flexDirection: 'column', gap: 8, overflow: 'hidden' },

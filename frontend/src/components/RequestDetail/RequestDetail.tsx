@@ -54,6 +54,37 @@ export function RequestDetail({ requestId, requestSummary = null, onClose }: Req
   );
 }
 
+export function RequestDetailContent({ requestId }: { requestId: string }) {
+  const api = useApi();
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['request', requestId],
+    queryFn: () => api.getRequest(requestId),
+  });
+
+  if (isLoading) return <div style={styles.loading}>Loading detail…</div>;
+  if (error) return <div style={styles.exportError}>{error instanceof Error ? error.message : String(error)}</div>;
+  if (!data) return null;
+
+  return (
+    <div style={styles.contentContainer}>
+      <div style={styles.contentHeader}>
+        <div style={styles.headerLeft}>
+          <span style={styles.id}>#{requestId.slice(0, 8)}…</span>
+          <span style={{ ...styles.badge, background: statusBg(data.response_status_code ?? null) }}>
+            {data.response_status_code ?? '...'}
+          </span>
+          <span style={styles.model}>{data.model_requested ?? ''}</span>
+          {data.model_resolved && data.model_resolved !== data.model_requested ? (
+            <span style={styles.meta}>→ {data.model_resolved}</span>
+          ) : null}
+        </div>
+      </div>
+      <RequestDetailMetaRow request={data} />
+      <RequestDetailBody data={data} isLoading={false} />
+    </div>
+  );
+}
+
 function RequestDetailHeader({
   exportingFormat,
   onClose,
@@ -419,6 +450,8 @@ function statusBg(code: number | null) {
 
 const styles: Record<string, React.CSSProperties> = {
   container: { display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', color: '#e6edf3' },
+  contentContainer: { display: 'flex', flexDirection: 'column', color: '#e6edf3', overflow: 'hidden' },
+  contentHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid #21262d', flexShrink: 0, gap: 8 },
   header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid #21262d', flexShrink: 0, gap: 8 },
   headerLeft: { display: 'flex', gap: 8, alignItems: 'center', overflow: 'hidden' },
   headerRight: { display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 },

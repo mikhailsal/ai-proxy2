@@ -395,12 +395,11 @@ describe('ChatView', () => {
 
     await userEvent.click(screen.getAllByRole('button', { name: 'Show raw request' })[0]);
     await waitFor(() => expect(api.getRequest).toHaveBeenCalledWith('req-1'));
-    expect(screen.getByText('Request body')).toBeInTheDocument();
-    expect(screen.getByText('Response body')).toBeInTheDocument();
+    expect(screen.getByText('Request Body')).toBeInTheDocument();
+    expect(screen.getByText('Response Body')).toBeInTheDocument();
     expect(screen.getByText('"tools"')).toBeInTheDocument();
     expect(screen.getByText('"messages"')).toBeInTheDocument();
     expect(screen.getByText('"choices"')).toBeInTheDocument();
-    expect(screen.queryByText('"__collapsed_previous_messages__"')).not.toBeInTheDocument();
 
     api.getConversationMessages.mockResolvedValueOnce({ items: [] });
     initialRender.unmount();
