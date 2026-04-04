@@ -232,6 +232,9 @@ function ColResizer({
 const SHRINKABLE_COLS: ReadonlySet<ColKey> = new Set(['userMsg', 'assistantMsg']);
 
 function colStyle(key: ColKey, widths: typeof DEFAULT_COL_WIDTHS): React.CSSProperties {
+  if (key === 'assistantMsg') {
+    return { flex: 1, minWidth: widths[key], overflow: 'hidden' };
+  }
   return { width: widths[key], minWidth: SHRINKABLE_COLS.has(key) ? 60 : undefined, flexShrink: SHRINKABLE_COLS.has(key) ? 1 : 0, overflow: 'hidden' };
 }
 
@@ -475,9 +478,9 @@ function statusColor(code: number | null): string {
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  list: { flex: 1, overflow: 'auto' },
-  headerRow: { display: 'flex', padding: '6px 12px', fontSize: '0.75rem', color: '#8b949e', borderBottom: '1px solid #21262d', fontWeight: 600, flexShrink: 0, gap: 8, userSelect: 'none' },
-  row: { display: 'flex', alignItems: 'center', padding: '0 12px', cursor: 'pointer', width: '100%', boxSizing: 'border-box', fontSize: '0.85rem', color: '#e6edf3', gap: 8 },
+  list: { flex: 1, overflowY: 'auto', overflowX: 'hidden' },
+  headerRow: { display: 'flex', padding: '6px 12px', fontSize: '0.75rem', color: '#8b949e', borderBottom: '1px solid #21262d', fontWeight: 600, flexShrink: 0, gap: 8, userSelect: 'none', overflow: 'hidden' },
+  row: { display: 'flex', alignItems: 'center', padding: '0 12px', cursor: 'pointer', width: '100%', boxSizing: 'border-box', fontSize: '0.85rem', color: '#e6edf3', gap: 8, overflow: 'hidden' },
   ellipsis: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const },
   loading: { padding: '2rem', textAlign: 'center', color: '#8b949e' },
 };
