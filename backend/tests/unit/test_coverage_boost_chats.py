@@ -86,18 +86,6 @@ def test_message_display_text_empty():
     assert result == "(empty message)"
 
 
-def test_group_identity_client_mode():
-    record = _make_record(client_api_key_hash="abc123")
-    key, label = chat_repo._group_identity(record, "client")
-    assert key == "abc123"
-
-
-def test_group_identity_model_mode():
-    record = _make_record(model_requested="gpt-4o")
-    key, label = chat_repo._group_identity(record, "model")
-    assert key == "gpt-4o"
-
-
 def test_group_identity_system_prompt_first_user_with_system_only():
     record = _make_record(
         request_body={"messages": [{"role": "system", "content": "be helpful"}]},
@@ -198,12 +186,6 @@ def test_first_assistant_response_text_missing():
     record = _make_record()
     result = chat_repo._first_assistant_response_text(record)
     assert result == ""
-
-
-def test_group_identity_default_fallback():
-    record = _make_record(request_body={"messages": []})
-    key, label = chat_repo._group_identity(record, "system_prompt")
-    assert label == "unknown"
 
 
 def test_assistant_response_message_non_dict_choice():

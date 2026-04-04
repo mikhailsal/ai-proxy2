@@ -355,7 +355,7 @@ describe('ChatView', () => {
     };
 
     renderWithApi(
-      <ChatView groupBy="client" onGroupByChange={onGroupByChange} onSelectGroup={onSelectGroup} selectedGroup={null} />,
+      <ChatView groupBy="system_prompt_first_user_first_assistant" onGroupByChange={onGroupByChange} onSelectGroup={onSelectGroup} selectedGroup={null} />,
       api,
     );
 
@@ -377,7 +377,7 @@ describe('ChatView', () => {
     };
 
     const initialRender = renderWithApi(
-      <ChatView groupBy="system_prompt" onGroupByChange={vi.fn()} onSelectGroup={vi.fn()} selectedGroup="alpha" />,
+      <ChatView groupBy="system_prompt_first_user_first_assistant" onGroupByChange={vi.fn()} onSelectGroup={vi.fn()} selectedGroup="alpha" />,
       api,
     );
 
@@ -404,7 +404,7 @@ describe('ChatView', () => {
     api.getConversationMessages.mockResolvedValueOnce({ items: [] });
     initialRender.unmount();
     renderWithApi(
-      <ChatView groupBy="system_prompt" onGroupByChange={vi.fn()} onSelectGroup={vi.fn()} selectedGroup="beta" />,
+      <ChatView groupBy="system_prompt_first_user_first_assistant" onGroupByChange={vi.fn()} onSelectGroup={vi.fn()} selectedGroup="beta" />,
       api,
     );
 

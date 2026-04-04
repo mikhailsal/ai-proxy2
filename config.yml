@@ -161,4 +161,4 @@ logging:
 
 # Grouping rules for conversation detection
 grouping:
-  default_field: "system_prompt"
+  default_field: "system_prompt_first_user_first_assistant"

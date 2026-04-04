@@ -1,5 +1,5 @@
 export type ActiveTab = 'requests' | 'chat';
-export type ChatGroupBy = 'system_prompt' | 'system_prompt_first_user' | 'system_prompt_first_user_first_assistant' | 'client' | 'model';
+export type ChatGroupBy = 'system_prompt_first_user' | 'system_prompt_first_user_first_assistant';
 
 export interface NavigationState {
   activeTab: ActiveTab;
@@ -15,12 +15,12 @@ export const DEFAULT_NAVIGATION: NavigationState = {
   requestId: null,
   requestSearch: '',
   requestModelFilter: '',
-  chatGroupBy: 'system_prompt',
+  chatGroupBy: 'system_prompt_first_user_first_assistant',
   selectedChatGroup: null,
 };
 
 export function parseChatGroupBy(value: string | null): ChatGroupBy {
-  if (value === 'client' || value === 'model' || value === 'system_prompt' || value === 'system_prompt_first_user' || value === 'system_prompt_first_user_first_assistant') {
+  if (value === 'system_prompt_first_user' || value === 'system_prompt_first_user_first_assistant') {
     return value;
   }
 

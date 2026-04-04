@@ -115,7 +115,7 @@ describe('ConnectedApp and workspaces', () => {
     const { ChatWorkspace } = await import('../../src/app/ChatWorkspace');
     render(
       <ChatWorkspace
-        navigation={{ activeTab: 'chat', chatGroupBy: 'client', selectedChatGroup: null } as NavigationState}
+        navigation={{ activeTab: 'chat', chatGroupBy: 'system_prompt_first_user_first_assistant', selectedChatGroup: null } as NavigationState}
         updateNavigation={updateNavigation}
       />,
     );

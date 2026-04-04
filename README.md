@@ -201,7 +201,7 @@ Configuration is split into two files:
 | `access_rules` | Per-key model allow/deny lists (optional) |
 | `modification_rules` | Rewrite request fields before forwarding (optional) |
 | `logging.log_retention_days` | Auto-delete logs older than N days (default: 30) |
-| `grouping.default_field` | Field used for conversation grouping (default: `system_prompt`) |
+| `grouping.default_field` | Field used for conversation grouping (default: `system_prompt_first_user_first_assistant`) |
 
 ### `config.secrets.yml`
 

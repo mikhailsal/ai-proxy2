@@ -63,7 +63,7 @@ modification_rules:
 logging:
   batch_size: 10
 grouping:
-  default_field: client
+  default_field: system_prompt_first_user
 """.strip()
     )
 

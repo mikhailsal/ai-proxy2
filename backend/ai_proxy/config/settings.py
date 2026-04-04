@@ -28,7 +28,7 @@ class LoggingConfig(BaseModel):
 
 
 class GroupingConfig(BaseModel):
-    default_field: str = "system_prompt"
+    default_field: str = "system_prompt_first_user_first_assistant"
 
 
 class AccessRule(BaseModel):

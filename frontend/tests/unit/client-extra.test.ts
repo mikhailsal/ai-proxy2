@@ -38,7 +38,7 @@ describe('BrowserApiClient', () => {
     ).resolves.toEqual({ items: [], next_cursor: 'cursor-1' });
     await expect(client.getRequest('req-1')).resolves.toEqual({ id: 'req-1' });
     await expect(client.searchRequests('hello', 5)).resolves.toEqual({ items: [{ id: 'req-1' }] });
-    await expect(client.getConversations({ group_by: 'client', limit: 2, offset: 3 })).resolves.toEqual({ items: [{ group_key: 'team-a' }] });
+    await expect(client.getConversations({ group_by: 'system_prompt_first_user', limit: 2, offset: 3 })).resolves.toEqual({ items: [{ group_key: 'team-a' }] });
 
     expect(fetchMock).toHaveBeenNthCalledWith(1, 'http://localhost:8000/ui/v1/stats', withAuth('secret'));
     expect(fetchMock).toHaveBeenNthCalledWith(
@@ -48,15 +48,15 @@ describe('BrowserApiClient', () => {
     );
     expect(fetchMock).toHaveBeenNthCalledWith(3, 'http://localhost:8000/ui/v1/requests/req-1', withAuth('secret'));
     expect(fetchMock).toHaveBeenNthCalledWith(4, 'http://localhost:8000/ui/v1/search?q=hello&limit=5', withAuth('secret'));
-    expect(fetchMock).toHaveBeenNthCalledWith(5, 'http://localhost:8000/ui/v1/conversations?group_by=client&limit=2&offset=3', withAuth('secret'));
+    expect(fetchMock).toHaveBeenNthCalledWith(5, 'http://localhost:8000/ui/v1/conversations?group_by=system_prompt_first_user&limit=2&offset=3', withAuth('secret'));
   });
 
   it('posts conversation message lookups and exposes export helpers', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ items: [{ id: 'msg-1', source_request_id: 'req-1' }] }));
     const client = createApiClient({ baseUrl: 'http://localhost:8000/', uiApiKey: '' });
 
-    await expect(client.getConversationMessages('team a', 'model')).resolves.toEqual({ items: [{ id: 'msg-1', source_request_id: 'req-1' }] });
-    expect(fetchMock).toHaveBeenCalledWith('http://localhost:8000/ui/v1/conversations/messages?group_by=model', {
+    await expect(client.getConversationMessages('team a', 'system_prompt_first_user')).resolves.toEqual({ items: [{ id: 'msg-1', source_request_id: 'req-1' }] });
+    expect(fetchMock).toHaveBeenCalledWith('http://localhost:8000/ui/v1/conversations/messages?group_by=system_prompt_first_user', {
       body: JSON.stringify({ group_key: 'team a' }),
       headers: { 'Content-Type': 'application/json' },
       method: 'POST',

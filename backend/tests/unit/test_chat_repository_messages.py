@@ -73,10 +73,6 @@ def test_chat_repository_helper_branches() -> None:
     assert chat_repo._message_display_text({"role": "assistant"}) == "(empty message)"
     assert chat_repo._first_message_by_role(request_body, "user") == request_body["messages"][0]
     assert chat_repo._first_message_by_role(request_body, "system") is None
-    assert chat_repo._first_message_text(request_body) == "hello\n[input_audio]"
-    assert chat_repo._group_identity(record, "client") == ("unknown", "unknown")
-    assert chat_repo._group_identity(record, "model") == ("resolved-model", "resolved-model")
-    assert chat_repo._group_identity(record, "other") == ("hello\n[input_audio]", "hello\n[input_audio]")
     assert chat_repo._group_identity(record, "system_prompt_first_user") == (
         '{"first_user_message": "hello\\n[input_audio]", "system_prompt": ""}',
         "User: hello\n[input_audio]",
@@ -103,7 +99,7 @@ async def test_get_conversation_messages_returns_empty_for_missing_group() -> No
         await chat_repo.get_conversation_messages(
             EmptyGroupSession(),
             "missing",
-            group_by="client",
+            group_by="system_prompt_first_user",
         )
         == []
     )

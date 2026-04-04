@@ -305,7 +305,7 @@ async def test_chat_repository_grouping_branches() -> None:
     from ai_proxy.db.repositories import chats as chats_repo
 
     session = FakeSession()
-    assert await chats_repo.get_conversations(session, group_by="client", limit=10, offset=0) == [
+    assert await chats_repo.get_conversations(session, group_by="system_prompt_first_user", limit=10, offset=0) == [
         {
             "group_key": None,
             "group_label": None,
@@ -316,5 +316,6 @@ async def test_chat_repository_grouping_branches() -> None:
             "models_used": [],
         }
     ]
-    assert await chats_repo.get_conversations(session, group_by="model", limit=10, offset=0)
-    assert await chats_repo.get_conversations(session, group_by="other", limit=10, offset=0)
+    assert await chats_repo.get_conversations(
+        session, group_by="system_prompt_first_user_first_assistant", limit=10, offset=0
+    )

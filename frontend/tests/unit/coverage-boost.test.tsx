@@ -149,7 +149,7 @@ describe('ChatWorkspace callback coverage', () => {
 
     const navigation = {
       activeTab: 'chat',
-      chatGroupBy: 'system_prompt',
+      chatGroupBy: 'system_prompt_first_user_first_assistant',
       selectedChatGroup: null,
       requestId: null,
       requestModelFilter: '',
@@ -164,13 +164,13 @@ describe('ChatWorkspace callback coverage', () => {
     expect(updateNavigation).toHaveBeenCalledTimes(2);
 
     const groupByResult = capturedUpdaters[0]({
-      activeTab: 'chat', chatGroupBy: 'system_prompt', selectedChatGroup: 'old',
+      activeTab: 'chat', chatGroupBy: 'system_prompt_first_user_first_assistant', selectedChatGroup: 'old',
     });
     expect(groupByResult.chatGroupBy).toBe('model');
     expect(groupByResult.selectedChatGroup).toBeNull();
 
     const selectResult = capturedUpdaters[1]({
-      activeTab: 'chat', chatGroupBy: 'system_prompt', selectedChatGroup: null,
+      activeTab: 'chat', chatGroupBy: 'system_prompt_first_user_first_assistant', selectedChatGroup: null,
     });
     expect(selectResult.selectedChatGroup).toBe('group-key');
   });
@@ -192,7 +192,7 @@ describe('RequestsWorkspace divider drag coverage', () => {
       requestId: 'req-1',
       requestModelFilter: '',
       requestSearch: '',
-      chatGroupBy: 'system_prompt',
+      chatGroupBy: 'system_prompt_first_user_first_assistant',
       selectedChatGroup: null,
     } as never;
 
@@ -288,7 +288,7 @@ describe('ChatView — Show raw request renders unified RequestDetailContent', (
       <QueryClientProvider client={queryClient}>
         <FreshApiContext.Provider value={api as never}>
           <ChatView
-            groupBy="system_prompt"
+            groupBy="system_prompt_first_user_first_assistant"
             onGroupByChange={vi.fn()}
             onSelectGroup={vi.fn()}
             selectedGroup="alpha"

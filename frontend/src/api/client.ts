@@ -116,7 +116,7 @@ class BrowserApiClient implements ApiClient {
 
   async getConversationMessages(
     groupKey: string,
-    groupBy = 'system_prompt',
+    groupBy = 'system_prompt_first_user_first_assistant',
   ): Promise<{ items: ConversationMessage[] }> {
     return fetchConversationMessages(this.baseUrl, this.uiApiKey, groupKey, groupBy);
   }

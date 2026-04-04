@@ -17,17 +17,19 @@ afterEach(() => {
 
 describe('navigation helpers', () => {
   it('parses navigation state from a location-like object', () => {
-    const location = { hash: '#top', pathname: '/app', search: '?tab=chat&groupBy=model&group=alpha' } as Location;
-    expect(parseChatGroupBy('client')).toBe('client');
+    const location = { hash: '#top', pathname: '/app', search: '?tab=chat&groupBy=system_prompt_first_user&group=alpha' } as Location;
     expect(parseChatGroupBy('system_prompt_first_user')).toBe('system_prompt_first_user');
     expect(parseChatGroupBy('system_prompt_first_user_first_assistant')).toBe('system_prompt_first_user_first_assistant');
+    expect(parseChatGroupBy('client')).toBe(DEFAULT_NAVIGATION.chatGroupBy);
+    expect(parseChatGroupBy('model')).toBe(DEFAULT_NAVIGATION.chatGroupBy);
+    expect(parseChatGroupBy('system_prompt')).toBe(DEFAULT_NAVIGATION.chatGroupBy);
     expect(parseChatGroupBy('other')).toBe(DEFAULT_NAVIGATION.chatGroupBy);
     expect(readNavigationFromLocation(location)).toEqual({
       activeTab: 'chat',
       requestId: null,
       requestSearch: '',
       requestModelFilter: '',
-      chatGroupBy: 'model',
+      chatGroupBy: 'system_prompt_first_user',
       selectedChatGroup: 'alpha',
     });
   });
@@ -48,10 +50,10 @@ describe('navigation helpers', () => {
       buildNavigationUrl({
         ...DEFAULT_NAVIGATION,
         activeTab: 'chat',
-        chatGroupBy: 'client',
+        chatGroupBy: 'system_prompt_first_user',
         selectedChatGroup: 'team-a',
       }, location),
-    ).toBe('/app?tab=chat&groupBy=client&group=team-a#hash');
+    ).toBe('/app?tab=chat&groupBy=system_prompt_first_user&group=team-a#hash');
   });
 });
 
@@ -73,7 +75,7 @@ describe('useNavigationState', () => {
   });
 
   it('handles replace updates and popstate resets', () => {
-    window.history.replaceState(null, '', '/?tab=chat&groupBy=client&group=alpha');
+    window.history.replaceState(null, '', '/?tab=chat&groupBy=system_prompt_first_user&group=alpha');
     const { result } = renderHook(() => useNavigationState());
 
     act(() => {

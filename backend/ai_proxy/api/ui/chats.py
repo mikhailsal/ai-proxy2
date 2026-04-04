@@ -16,7 +16,7 @@ SessionDep = Annotated[AsyncSession, Depends(get_session)]
 @router.get("/ui/v1/conversations")
 async def list_conversations(
     session: SessionDep,
-    group_by: str = Query("system_prompt"),
+    group_by: str = Query("system_prompt_first_user_first_assistant"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ) -> JSONResponse:
@@ -28,7 +28,7 @@ async def list_conversations(
 async def get_conversation_messages(
     request: Request,
     session: SessionDep,
-    group_by: str = Query("system_prompt"),
+    group_by: str = Query("system_prompt_first_user_first_assistant"),
 ) -> JSONResponse:
     body = await request.json()
     group_key = body.get("group_key", "")
