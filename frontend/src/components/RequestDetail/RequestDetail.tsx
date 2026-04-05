@@ -339,7 +339,7 @@ function Section({
 }) {
   const [open, setOpen] = useState(!initCollapsed);
   return (
-    <div style={{ borderBottom: '1px solid #21262d' }}>
+    <div style={{ borderBottom: '1px solid #21262d', minWidth: 0 }}>
       <div style={{ display: 'flex', alignItems: 'center' }}>
         <button onClick={() => setOpen(o => !o)} style={sectionHeaderStyle}>
           <span>{open ? '▼' : '▶'}</span>
@@ -347,7 +347,7 @@ function Section({
         </button>
         {badge && <div style={{ marginRight: 12, flexShrink: 0 }}>{badge}</div>}
       </div>
-      {open && <div style={{ padding: '0 12px 12px' }}>{children}</div>}
+      {open && <div style={{ padding: '0 12px 12px', overflow: 'hidden', minWidth: 0 }}>{children}</div>}
     </div>
   );
 }
@@ -449,7 +449,7 @@ function statusBg(code: number | null) {
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  container: { display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', color: '#e6edf3' },
+  container: { display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', color: '#e6edf3', minWidth: 0 },
   contentContainer: { display: 'flex', flexDirection: 'column', color: '#e6edf3', overflow: 'hidden' },
   contentHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid #21262d', flexShrink: 0, gap: 8 },
   header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid #21262d', flexShrink: 0, gap: 8 },
@@ -461,8 +461,8 @@ const styles: Record<string, React.CSSProperties> = {
   meta: { fontSize: '0.8rem', color: '#8b949e', whiteSpace: 'nowrap' },
   metaRow: { display: 'flex', gap: 16, padding: '6px 12px', borderBottom: '1px solid #21262d', flexWrap: 'wrap', flexShrink: 0 },
   exportError: { padding: '8px 12px', color: '#f85149', borderBottom: '1px solid #21262d', fontSize: '0.8rem' },
-  sections: { flex: 1, overflow: 'auto' },
-  pre: { margin: 0, fontFamily: 'monospace', fontSize: '0.8rem', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' },
+  sections: { flex: 1, overflow: 'auto', minWidth: 0 },
+  pre: { margin: 0, fontFamily: 'monospace', fontSize: '0.8rem', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', overflowWrap: 'anywhere', minWidth: 0 },
   loading: { padding: '2rem', textAlign: 'center', color: '#8b949e' },
   exportButton: { background: 'none', border: 'none', color: '#58a6ff', fontSize: '0.8rem', cursor: 'pointer', padding: 0 },
   closeBtn: { background: 'none', border: 'none', color: '#8b949e', cursor: 'pointer', fontSize: '1rem', padding: '0 4px' },

@@ -104,17 +104,19 @@ export function RequestBrowserList({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-      <HeaderRow colWidths={colWidths} onResizeCol={onResizeCol} />
-      <VirtualizedRows
-        colWidths={colWidths}
-        fetchNextPage={fetchNextPage}
-        hasNextPage={hasNextPage}
-        isFetchingNextPage={isFetchingNextPage}
-        items={items}
-        onSelect={onSelect}
-        searchQuery={searchQuery}
-        selectedId={selectedId}
-      />
+      <div style={{ overflowX: 'auto', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+        <HeaderRow colWidths={colWidths} onResizeCol={onResizeCol} />
+        <VirtualizedRows
+          colWidths={colWidths}
+          fetchNextPage={fetchNextPage}
+          hasNextPage={hasNextPage}
+          isFetchingNextPage={isFetchingNextPage}
+          items={items}
+          onSelect={onSelect}
+          searchQuery={searchQuery}
+          selectedId={selectedId}
+        />
+      </div>
     </div>
   );
 }
@@ -197,18 +199,22 @@ function ColResizer({
   const onMouseDown = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
+      e.stopPropagation();
       let lastX = e.clientX;
       const onMove = (ev: MouseEvent) => {
+        ev.preventDefault();
+        ev.stopPropagation();
         const delta = ev.clientX - lastX;
         lastX = ev.clientX;
         onResize(colKey, delta);
       };
-      const onUp = () => {
-        document.removeEventListener('mousemove', onMove);
-        document.removeEventListener('mouseup', onUp);
+      const onUp = (ev: MouseEvent) => {
+        ev.stopPropagation();
+        document.removeEventListener('mousemove', onMove, true);
+        document.removeEventListener('mouseup', onUp, true);
       };
-      document.addEventListener('mousemove', onMove);
-      document.addEventListener('mouseup', onUp);
+      document.addEventListener('mousemove', onMove, true);
+      document.addEventListener('mouseup', onUp, true);
     },
     [colKey, onResize],
   );
@@ -478,7 +484,7 @@ function statusColor(code: number | null): string {
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  list: { flex: 1, overflowY: 'auto', overflowX: 'hidden' },
+  list: { flex: 1, overflowY: 'auto', overflowX: 'hidden', minHeight: 0 },
   headerRow: { display: 'flex', padding: '6px 12px', fontSize: '0.75rem', color: '#8b949e', borderBottom: '1px solid #21262d', fontWeight: 600, flexShrink: 0, gap: 8, userSelect: 'none', overflow: 'hidden' },
   row: { display: 'flex', alignItems: 'center', padding: '0 12px', cursor: 'pointer', width: '100%', boxSizing: 'border-box', fontSize: '0.85rem', color: '#e6edf3', gap: 8, overflow: 'hidden' },
   ellipsis: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const },

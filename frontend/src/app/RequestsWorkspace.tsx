@@ -26,7 +26,7 @@ export function RequestsWorkspace({
   const hasDetail = !!navigation.requestId;
 
   return (
-    <div ref={containerRef} style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+    <div ref={containerRef} style={{ display: 'flex', flex: 1, minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
       <div style={{ ...styles.pane, flex: hasDetail ? `0 0 ${splitPercent}%` : '1' }}>
         <RequestBrowser
           modelFilter={navigation.requestModelFilter}
