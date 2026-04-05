@@ -6,6 +6,7 @@ import { useAutoRefresh } from '../../hooks/autoRefreshContext';
 import type { Conversation, ConversationMessage } from '../../types';
 import { JsonViewer } from '../JsonViewer/JsonViewer';
 import { RequestDetailContent } from '../RequestDetail/RequestDetail';
+import { useBranchVisibility } from './useBranchVisibility';
 
 const CONVERSATIONS_PAGE_SIZE = 40;
 
@@ -203,53 +204,6 @@ function getColorForBranch(localIndex: number, depth: number): string {
   return BRANCH_COLORS[(localIndex + offset) % BRANCH_COLORS.length];
 }
 
-function findScrollParent(el: HTMLElement | null): HTMLElement | null {
-  let cur = el;
-  while (cur) { const s = getComputedStyle(cur).overflowY; if (s === 'auto' || s === 'scroll') return cur; cur = cur.parentElement; }
-  return null;
-}
-
-function useBranchVisibility(branchCount: number, containerRef: React.RefObject<HTMLElement | null>) {
-  const branchRefs = useRef<(HTMLElement | null)[]>([]);
-  const thresholds = useRef<{ start: number; end: number }[]>([]);
-  const visRef = useRef<boolean[]>(Array(branchCount).fill(true));
-  const [visible, setVisible] = useState<boolean[]>(() => Array(branchCount).fill(true));
-  const setBranchRef = useCallback((i: number, el: HTMLElement | null) => { branchRefs.current[i] = el; }, []);
-  useEffect(() => {
-    const scroll = findScrollParent(containerRef.current);
-    if (!scroll) return;
-    const MARGIN = 50;
-    let pendingCalibration: ReturnType<typeof setTimeout> | null = null;
-    const calibrate = () => {
-      const sTop = scroll.scrollTop; const sr = scroll.getBoundingClientRect();
-      thresholds.current = Array.from({ length: branchCount }, (_, i) => {
-        const el = branchRefs.current[i];
-        if (!el) return { start: -Infinity, end: Infinity };
-        const rect = el.getBoundingClientRect();
-        return { start: sTop + (rect.top - sr.top), end: sTop + (rect.bottom - sr.top) };
-      });
-    };
-    const scheduleCalibration = (delayMs: number) => {
-      if (pendingCalibration) clearTimeout(pendingCalibration);
-      pendingCalibration = setTimeout(() => { pendingCalibration = null; calibrate(); }, delayMs);
-    };
-    const onScroll = () => {
-      if (thresholds.current.length !== branchCount || pendingCalibration) return;
-      const sTop = scroll.scrollTop; const sBot = sTop + scroll.clientHeight;
-      const next = thresholds.current.map(th => th.end > (sTop - MARGIN) && th.start < (sBot + MARGIN));
-      const prev = visRef.current;
-      if (next.every((v, j) => v === prev[j])) return;
-      visRef.current = next;
-      if (next.every(Boolean) && !prev.every(Boolean)) scheduleCalibration(400);
-      setVisible(next);
-    };
-    scroll.addEventListener('scroll', onScroll, { passive: true });
-    requestAnimationFrame(() => { calibrate(); onScroll(); });
-    return () => { scroll.removeEventListener('scroll', onScroll); if (pendingCalibration) clearTimeout(pendingCalibration); };
-  }, [branchCount, containerRef]);
-  return { visible, setBranchRef };
-}
-
 function TreeBranch({ nodeIds, nodeMap, depth }: { nodeIds: string[]; nodeMap: Map<string, ConversationMessage>; depth: number }) {
   if (nodeIds.length === 0) return null;
   if (nodeIds.length === 1) return <LinearChain startNodeId={nodeIds[0]} nodeMap={nodeMap} depth={depth} />;
@@ -258,27 +212,49 @@ function TreeBranch({ nodeIds, nodeMap, depth }: { nodeIds: string[]; nodeMap: M
 
 function ForkContainer({ nodeIds, nodeMap, depth }: { nodeIds: string[]; nodeMap: Map<string, ConversationMessage>; depth: number }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const { visible, setBranchRef } = useBranchVisibility(nodeIds.length, containerRef);
+  const { visible, setSentinelRef, setContentRef, heights } = useBranchVisibility(nodeIds.length, containerRef);
   const anyVisible = visible.some(Boolean);
   return (
-    <div ref={containerRef} style={styles.forkContainer}>
+    <div ref={containerRef} style={{ ...styles.forkContainer, alignItems: 'stretch' }}>
       {nodeIds.map((nodeId, i) => {
         const color = getColorForBranch(i, depth);
         const isVis = !anyVisible || visible[i];
+        const h = heights[i] || 0;
         return (
           <div
             key={nodeId}
-            ref={el => setBranchRef(i, el)}
             style={{
-              ...styles.forkBranch,
-              borderColor: color,
               flex: isVis ? '1 1 0' : '0 0 3px',
               minWidth: isVis ? 280 : 3,
-              paddingLeft: isVis ? 12 : 0,
+              borderLeft: `3px solid ${color}`,
               overflow: 'hidden',
+              position: 'relative',
+              transition: 'flex 0.35s ease, min-width 0.35s ease',
             }}
           >
-            <BranchContent startNodeId={nodeId} nodeMap={nodeMap} depth={depth} />
+            <div
+              ref={el => setSentinelRef(i, el)}
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: 1,
+                height: h > 0 ? h : '100%',
+                pointerEvents: 'none',
+              }}
+            />
+            <div
+              ref={el => setContentRef(i, el)}
+              style={{
+                paddingLeft: isVis ? 9 : 0,
+                display: 'flex',
+                flexDirection: 'column' as const,
+                gap: 12,
+                transition: 'padding 0.35s ease',
+              }}
+            >
+              <BranchContent startNodeId={nodeId} nodeMap={nodeMap} depth={depth} />
+            </div>
           </div>
         );
       })}
@@ -496,5 +472,4 @@ const styles: Record<string, React.CSSProperties> = {
   reasoningIcon: { fontSize: '0.9rem' }, reasoningLength: { color: '#8b949e', fontWeight: 400, fontSize: '0.72rem' },
   reasoningContent: { padding: '0 12px 12px', fontSize: '0.82rem', lineHeight: 1.6, color: '#c9d1d9', whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 400, overflowY: 'auto', borderTop: '1px solid #21262d' },
   forkContainer: { display: 'flex', gap: 0, padding: '4px 0', alignItems: 'flex-start' },
-  forkBranch: { flex: '1 1 0', minWidth: 280, borderLeft: '3px solid', paddingLeft: 12, display: 'flex', flexDirection: fc, gap: 12, transition: 'flex 0.35s ease, min-width 0.35s ease, padding 0.35s ease' },
 };
