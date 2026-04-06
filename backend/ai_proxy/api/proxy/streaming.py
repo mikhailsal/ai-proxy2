@@ -13,6 +13,7 @@ from fastapi import Request
 from fastapi.responses import Response, StreamingResponse
 
 from ai_proxy.adapters.openai_compat import parse_sse_chunk
+from ai_proxy.api.proxy.response_utils import client_route_identifier
 from ai_proxy.core.routing import RouteResult
 from ai_proxy.logging.models import LogEntry
 from ai_proxy.logging.service import enqueue_log
@@ -55,11 +56,13 @@ async def stream_error_response(
     start_time: float,
     upstream_stream: Any,
     extract_error_message: Callable[[Any], str | None],
+    inject_ai_proxy_route: Callable[[Any, RouteResult], Any],
     proxy_response_headers: Callable[[dict[str, str]], dict[str, str]],
     client_request_body: JsonObject | None = None,
 ) -> Response:
     latency = (time.monotonic() - start_time) * 1000
     response_body = upstream_stream.parsed_error_body()
+    client_response_body = inject_ai_proxy_route(response_body, route)
     client_resp_headers = proxy_response_headers(upstream_stream.headers)
     await enqueue_log(
         LogEntry.from_proxy_context(
@@ -77,9 +80,16 @@ async def stream_error_response(
             response_headers=upstream_stream.headers,
             client_response_headers=client_resp_headers,
             response_body=response_body,
+            client_response_body=client_response_body,
             error_message=extract_error_message(response_body),
         )
     )
+    if isinstance(client_response_body, dict) and "raw_text" not in client_response_body:
+        return Response(
+            content=json.dumps(client_response_body).encode("utf-8"),
+            status_code=upstream_stream.status_code,
+            headers=client_resp_headers,
+        )
     return Response(
         content=upstream_stream.error_body,
         status_code=upstream_stream.status_code,
@@ -111,7 +121,11 @@ def build_streaming_response(
     streaming_headers.setdefault("X-Accel-Buffering", "no")
 
     async def stream_generator() -> AsyncGenerator[bytes, None]:
-        async for chunk_bytes in relay_stream_chunks(upstream_stream, state):
+        async for chunk_bytes in relay_stream_chunks(
+            upstream_stream,
+            state,
+            ai_proxy_route=client_route_identifier(route),
+        ):
             yield chunk_bytes
         await enqueue_stream_log(
             request=request,
@@ -138,25 +152,41 @@ def build_streaming_response(
 async def relay_stream_chunks(
     upstream_stream: Any,
     state: StreamState,
+    *,
+    ai_proxy_route: str | None = None,
 ) -> AsyncGenerator[bytes, None]:
     if upstream_stream.body is None:
         state.response_status_code = 502
         state.stream_error_message = "Provider stream was not established"
         logger.error("stream_error", error=state.stream_error_message)
-        yield stream_error_event(state.stream_error_message)
+        yield stream_error_event(state.stream_error_message, ai_proxy_route=ai_proxy_route)
         return
 
     try:
         async for chunk_bytes in upstream_stream.body:
-            yield chunk_bytes
-            capture_stream_chunk(state, chunk_bytes)
+            client_chunk = inject_ai_proxy_route_chunk(chunk_bytes, ai_proxy_route=ai_proxy_route)
+            yield client_chunk
+            capture_stream_chunk(state, client_chunk)
     except httpx.RequestError as error:
         status_code = 504 if isinstance(error, httpx.TimeoutException) else 502
         record_stream_exception(state, str(error), status_code)
-        yield stream_error_event(state.stream_error_message or "Provider stream error")
+        yield stream_error_event(state.stream_error_message or "Provider stream error", ai_proxy_route=ai_proxy_route)
     except Exception as error:
         record_stream_exception(state, str(error), 502)
-        yield stream_error_event(state.stream_error_message or "Provider stream error")
+        yield stream_error_event(state.stream_error_message or "Provider stream error", ai_proxy_route=ai_proxy_route)
+
+
+def inject_ai_proxy_route_chunk(chunk_bytes: bytes, *, ai_proxy_route: str | None) -> bytes:
+    if not ai_proxy_route:
+        return chunk_bytes
+
+    parsed = parse_sse_chunk(chunk_bytes)
+    if not parsed:
+        return chunk_bytes
+
+    client_chunk = dict(parsed)
+    client_chunk["ai_proxy_route"] = ai_proxy_route
+    return f"data: {json.dumps(client_chunk)}\n\n".encode()
 
 
 _STRING_MERGE_KEYS = frozenset({"content", "reasoning_content", "reasoning", "refusal"})
@@ -257,8 +287,11 @@ def record_stream_exception(state: StreamState, error_message: str, status_code:
     logger.error("stream_error", error=error_message)
 
 
-def stream_error_event(message: str) -> bytes:
-    return f'data: {json.dumps({"error": {"message": message}})}\n\n'.encode()
+def stream_error_event(message: str, *, ai_proxy_route: str | None = None) -> bytes:
+    payload: JsonObject = {"error": {"message": message}}
+    if ai_proxy_route:
+        payload["ai_proxy_route"] = ai_proxy_route
+    return f"data: {json.dumps(payload)}\n\n".encode()
 
 
 async def enqueue_stream_log(

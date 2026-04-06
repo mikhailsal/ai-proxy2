@@ -9,6 +9,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from ai_proxy.adapters.base import ProviderResponse, ProviderStreamResponse
+from ai_proxy.api.proxy import response_utils
 from ai_proxy.api.proxy import router as proxy_router
 from ai_proxy.app import create_app
 from ai_proxy.config.settings import AppConfig
@@ -153,8 +154,13 @@ async def test_non_streaming_and_streaming_success_paths(monkeypatch: pytest.Mon
     assert response.status_code == 201
     assert response.headers["x-upstream"] == "ok"
     assert "connection" not in response.headers
+    assert response.json()["ai_proxy_route"] == "provider:mapped-model"
     assert logged_entries[0].total_tokens == 3
     assert logged_entries[0].error_message is None
+    assert logged_entries[0].client_response_body == {
+        "usage": {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3},
+        "ai_proxy_route": "provider:mapped-model",
+    }
 
     route = SimpleNamespace(provider_name="provider", mapped_model="mapped-model", adapter=FakeErrorStreamAdapter())
     monkeypatch.setattr(proxy_router, "resolve_model", lambda _model: route)
@@ -168,7 +174,49 @@ async def test_non_streaming_and_streaming_success_paths(monkeypatch: pytest.Mon
 
     assert stream_response.status_code == 429
     assert stream_response.headers["content-type"].startswith("application/json")
-    assert stream_response.json() == {"error": {"message": "rate limited"}}
+    assert stream_response.json() == {
+        "error": {"message": "rate limited"},
+        "ai_proxy_route": "provider:mapped-model",
+    }
+
+
+@pytest.mark.asyncio
+async def test_ai_proxy_route_can_be_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    app = create_app()
+    transport = ASGITransport(app=app)
+    logged_entries = []
+
+    async def capture_log(entry):
+        logged_entries.append(entry)
+
+    monkeypatch.setattr(proxy_router, "get_app_config", lambda: AppConfig(response={"include_ai_proxy_route": False}))
+    monkeypatch.setattr(proxy_router, "validate_proxy_api_key", lambda _key, **kw: (True, "hash", True))
+    monkeypatch.setattr(proxy_router, "check_model_access", lambda *_args: (True, ""))
+    monkeypatch.setattr(proxy_router, "apply_modifications", lambda body, headers, *_args: (body, headers))
+    monkeypatch.setattr(proxy_router, "enqueue_log", capture_log)
+    monkeypatch.setattr(proxy_router, "resolve_provider_key", lambda *_args, **_kw: None)
+    monkeypatch.setattr(
+        proxy_router,
+        "resolve_model",
+        lambda _model: SimpleNamespace(
+            provider_name="provider",
+            mapped_model="mapped-model",
+            adapter=FakeSuccessAdapter(),
+        ),
+    )
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            headers={"Authorization": "Bearer proxy-key"},
+            json={"model": "gpt-4o-mini", "messages": [{"role": "user", "content": "hello"}]},
+        )
+
+    assert response.status_code == 201
+    assert response.json() == {"usage": {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3}}
+    assert logged_entries[0].client_response_body == {
+        "usage": {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3}
+    }
 
 
 @pytest.mark.asyncio
@@ -204,18 +252,18 @@ async def test_list_models_and_transport_helpers(monkeypatch: pytest.MonkeyPatch
     assert proxy_router._transport_error_status(httpx.TimeoutException("boom")) == 504
     connect_error = httpx.ConnectError("boom", request=httpx.Request("GET", "https://example.com"))
     assert proxy_router._transport_error_status(connect_error) == 502
-    assert proxy_router._extract_usage({}) == (None, None, None)
+    assert response_utils.extract_usage({}) == (None, None, None)
     usage_payload = {"usage": {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3}}
-    assert proxy_router._extract_usage(usage_payload) == (1, 2, 3)
-    assert proxy_router._extract_error_message({"error": {"message": "broken"}}) == "broken"
-    assert proxy_router._extract_error_message({"message": "broken"}) == "broken"
-    assert proxy_router._extract_error_message({"raw_text": "broken"}) == "broken"
-    assert proxy_router._extract_error_message(None, "fallback") == "fallback"
-    assert proxy_router._extract_cost(None) is None
-    assert proxy_router._extract_cost({}) is None
-    assert proxy_router._extract_cost({"usage": {"cost": 0.0025}}) == 0.0025
-    assert proxy_router._extract_cost({"cost": 0.01}) == 0.01
-    assert proxy_router._extract_cost({"usage": {"cost": "not-a-number"}}) is None
+    assert response_utils.extract_usage(usage_payload) == (1, 2, 3)
+    assert response_utils.extract_error_message({"error": {"message": "broken"}}) == "broken"
+    assert response_utils.extract_error_message({"message": "broken"}) == "broken"
+    assert response_utils.extract_error_message({"raw_text": "broken"}) == "broken"
+    assert response_utils.extract_error_message(None, "fallback") == "fallback"
+    assert response_utils.extract_cost(None) is None
+    assert response_utils.extract_cost({}) is None
+    assert response_utils.extract_cost({"usage": {"cost": 0.0025}}) == 0.0025
+    assert response_utils.extract_cost({"cost": 0.01}) == 0.01
+    assert response_utils.extract_cost({"usage": {"cost": "not-a-number"}}) is None
 
 
 @pytest.mark.asyncio

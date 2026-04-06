@@ -1,5 +1,6 @@
 """Proxy API router — /v1/chat/completions, /v1/models."""
 
+import json
 import time
 import uuid
 from typing import Any
@@ -9,6 +10,15 @@ import structlog
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
+from ai_proxy.api.proxy.response_utils import (
+    extract_cost,
+    extract_error_message,
+    extract_usage,
+    proxy_response_headers,
+)
+from ai_proxy.api.proxy.response_utils import (
+    inject_ai_proxy_route as apply_ai_proxy_route,
+)
 from ai_proxy.api.proxy.streaming import build_streaming_response, stream_error_response
 from ai_proxy.config.loader import get_app_config
 from ai_proxy.core.access import check_model_access
@@ -24,18 +34,6 @@ from ai_proxy.types import JsonObject
 logger = structlog.get_logger()
 
 router = APIRouter()
-HOP_BY_HOP_HEADERS = {
-    "connection",
-    "content-encoding",
-    "content-length",
-    "keep-alive",
-    "proxy-authenticate",
-    "proxy-authorization",
-    "te",
-    "trailer",
-    "transfer-encoding",
-    "upgrade",
-}
 
 
 def _extract_api_key(request: Request) -> str | None:
@@ -45,65 +43,14 @@ def _extract_api_key(request: Request) -> str | None:
     return None
 
 
-def _proxy_response_headers(headers: dict[str, str], *, json_body: bool = False) -> dict[str, str]:
-    out = {key: value for key, value in headers.items() if key.lower() not in HOP_BY_HOP_HEADERS}
-    if json_body:
-        out["content-type"] = "application/json"
-    return out
-
-
 def _transport_error_status(error: httpx.RequestError) -> int:
     if isinstance(error, httpx.TimeoutException):
         return 504
     return 502
 
 
-def _extract_usage(response_body: Any) -> tuple[int | None, int | None, int | None]:
-    if not isinstance(response_body, dict):
-        return None, None, None
-
-    usage = response_body.get("usage")
-    if not isinstance(usage, dict):
-        return None, None, None
-
-    return (
-        usage.get("prompt_tokens"),
-        usage.get("completion_tokens"),
-        usage.get("total_tokens"),
-    )
-
-
-def _extract_cost(response_body: Any) -> float | None:
-    if not isinstance(response_body, dict):
-        return None
-    usage = response_body.get("usage")
-    if isinstance(usage, dict):
-        cost = usage.get("cost")
-        if isinstance(cost, int | float):
-            return float(cost)
-    cost = response_body.get("cost")
-    if isinstance(cost, int | float):
-        return float(cost)
-    return None
-
-
-def _extract_error_message(response_body: Any, fallback: str | None = None) -> str | None:
-    if isinstance(response_body, dict):
-        error = response_body.get("error")
-        if isinstance(error, dict):
-            message = error.get("message")
-            if isinstance(message, str):
-                return message
-
-        message = response_body.get("message")
-        if isinstance(message, str):
-            return message
-
-        raw_text = response_body.get("raw_text")
-        if isinstance(raw_text, str):
-            return raw_text
-
-    return fallback
+def _inject_ai_proxy_route(response_body: Any, route: RouteResult) -> Any:
+    return apply_ai_proxy_route(response_body, route, config=get_app_config())
 
 
 def _apply_provider_pinning(body: JsonObject, route: RouteResult) -> None:
@@ -274,10 +221,36 @@ async def _handle_non_streaming(
             client_request_body=client_request_body,
         )
 
+    return await _finalize_non_streaming_response(
+        request=request,
+        request_id=request_id,
+        key_hash=key_hash,
+        forward_body=forward_body,
+        route=route,
+        model_requested=model_requested,
+        start_time=start_time,
+        upstream_response=upstream_response,
+        client_request_body=client_request_body,
+    )
+
+
+async def _finalize_non_streaming_response(
+    *,
+    request: Request,
+    request_id: uuid.UUID,
+    key_hash: str,
+    forward_body: JsonObject,
+    route: RouteResult,
+    model_requested: str,
+    start_time: float,
+    upstream_response: Any,
+    client_request_body: JsonObject | None,
+) -> Response:
     response_body = upstream_response.parsed_body()
-    is_json = isinstance(response_body, dict) and "raw_text" not in response_body
-    client_response_headers = _proxy_response_headers(upstream_response.headers, json_body=is_json)
-    input_tokens, output_tokens, total_tokens = _extract_usage(response_body)
+    client_response_body = _inject_ai_proxy_route(response_body, route)
+    is_json = isinstance(client_response_body, dict) and "raw_text" not in client_response_body
+    client_response_headers = proxy_response_headers(upstream_response.headers, json_body=is_json)
+    input_tokens, output_tokens, total_tokens = extract_usage(response_body)
     await _enqueue_non_streaming_log(
         request=request,
         request_id=request_id,
@@ -289,13 +262,20 @@ async def _handle_non_streaming(
         latency=(time.monotonic() - start_time) * 1000,
         upstream_response=upstream_response,
         response_body=response_body,
+        client_response_body=client_response_body,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         total_tokens=total_tokens,
-        cost=_extract_cost(response_body),
+        cost=extract_cost(response_body),
         client_request_body=client_request_body,
         client_response_headers=client_response_headers,
     )
+    if is_json:
+        return Response(
+            content=json.dumps(client_response_body).encode("utf-8"),
+            status_code=upstream_response.status_code,
+            headers=client_response_headers,
+        )
     return Response(
         content=upstream_response.body, status_code=upstream_response.status_code, headers=client_response_headers
     )
@@ -371,8 +351,9 @@ async def _finalize_stream(
             model_requested=model_requested,
             start_time=start_time,
             upstream_stream=upstream_stream,
-            extract_error_message=_extract_error_message,
-            proxy_response_headers=_proxy_response_headers,
+            extract_error_message=extract_error_message,
+            inject_ai_proxy_route=_inject_ai_proxy_route,
+            proxy_response_headers=proxy_response_headers,
             client_request_body=client_request_body,
         )
     return build_streaming_response(
@@ -385,7 +366,7 @@ async def _finalize_stream(
         model_requested=model_requested,
         start_time=start_time,
         upstream_stream=upstream_stream,
-        proxy_response_headers=_proxy_response_headers,
+        proxy_response_headers=proxy_response_headers,
         client_request_body=client_request_body,
     )
 
@@ -435,6 +416,7 @@ async def _transport_error_response(
     build_fn = getattr(route.adapter, "_build_headers", None)
     sent_headers = build_fn(forward_headers, override_api_key=override_api_key) if build_fn else forward_headers
     client_body: JsonObject = {"error": {"message": f"Provider transport error: {error_message}"}}
+    client_body = _inject_ai_proxy_route(client_body, route)
     client_headers = {"content-type": "application/json"}
     await enqueue_log(
         LogEntry.from_proxy_context(
@@ -469,6 +451,7 @@ async def _enqueue_non_streaming_log(
     latency: float,
     upstream_response: Any,
     response_body: Any,
+    client_response_body: Any,
     input_tokens: int | None,
     output_tokens: int | None,
     total_tokens: int | None,
@@ -491,10 +474,11 @@ async def _enqueue_non_streaming_log(
         response_headers=upstream_response.headers,
         client_response_headers=client_response_headers,
         response_body=response_body,
+        client_response_body=client_response_body,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         total_tokens=total_tokens,
-        error_message=_extract_error_message(response_body),
+        error_message=extract_error_message(response_body),
     )
     entry.cost = cost
     await enqueue_log(entry)

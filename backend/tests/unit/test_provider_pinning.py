@@ -12,7 +12,13 @@ from ai_proxy.adapters.base import ProviderResponse
 from ai_proxy.api.proxy import router as proxy_router
 from ai_proxy.app import create_app
 from ai_proxy.config.settings import AppConfig
-from ai_proxy.core.routing import RouteResult, _merge_pinned, _parse_mapping, _strip_client_provider_suffix
+from ai_proxy.core.routing import (
+    RouteResult,
+    _format_route_label,
+    _merge_pinned,
+    _parse_mapping,
+    _strip_client_provider_suffix,
+)
 
 # ── _parse_mapping unit tests ─────────────────────────────────────────
 
@@ -55,7 +61,7 @@ class TestParseMapping:
         assert pinned is None
 
     def test_whitespace_in_pins_stripped(self):
-        provider, model, pinned = _parse_mapping("openrouter:model+ openai , together ")
+        _provider, _model, pinned = _parse_mapping("openrouter:model+ openai , together ")
         assert pinned == ["openai", "together"]
 
     def test_model_with_colon_variant(self):
@@ -319,3 +325,44 @@ class TestMergePinned:
 
     def test_empty_config_uses_client(self):
         assert _merge_pinned([], ["client-slug"]) == ["client-slug"]
+
+
+def test_format_route_label_includes_pins() -> None:
+    assert _format_route_label("kilocode", "minimax/minimax-m2.7", ["minimax"]) == (
+        "kilocode:minimax/minimax-m2.7+minimax"
+    )
+
+
+@pytest.mark.asyncio
+async def test_client_response_includes_pinned_route_label(monkeypatch: pytest.MonkeyPatch) -> None:
+    app = create_app()
+    transport = ASGITransport(app=app)
+
+    adapter = FakePinAdapter()
+    route = SimpleNamespace(
+        provider_name="kilocode",
+        mapped_model="minimax/minimax-m2.7",
+        pinned_providers=["minimax"],
+        adapter=adapter,
+    )
+
+    async def noop_log(entry):
+        pass
+
+    monkeypatch.setattr(proxy_router, "get_app_config", lambda: AppConfig())
+    monkeypatch.setattr(proxy_router, "validate_proxy_api_key", lambda _key, **kw: (True, "hash", True))
+    monkeypatch.setattr(proxy_router, "check_model_access", lambda *_args: (True, ""))
+    monkeypatch.setattr(proxy_router, "apply_modifications", lambda body, headers, *_args: (body, headers))
+    monkeypatch.setattr(proxy_router, "resolve_model", lambda _model: route)
+    monkeypatch.setattr(proxy_router, "enqueue_log", noop_log)
+    monkeypatch.setattr(proxy_router, "resolve_provider_key", lambda *_args, **_kw: None)
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            headers={"Authorization": "Bearer key"},
+            json={"model": "minimax/minimax-m2.7", "messages": [{"role": "user", "content": "hi"}]},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["ai_proxy_route"] == "kilocode:minimax/minimax-m2.7+minimax"

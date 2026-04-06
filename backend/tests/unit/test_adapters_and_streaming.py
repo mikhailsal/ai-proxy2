@@ -286,10 +286,18 @@ async def test_streaming_helpers_success_logging(monkeypatch: pytest.MonkeyPatch
     )
     chunks = [chunk async for chunk in response.body_iterator]
 
-    assert chunks[0].startswith(b"data: ")
+    assert chunks[0] == (
+        b'data: {"choices": [{"delta": {"content": "Hi"}}], "ai_proxy_route": "provider:mapped-model"}\n\n'
+    )
+    assert chunks[1] == (
+        b'data: {"usage": {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3}, '
+        b'"ai_proxy_route": "provider:mapped-model"}\n\n'
+    )
+    assert chunks[2] == b"data: [DONE]\n\n"
     assert response.headers["cache-control"] == "no-cache"
     assert logged_entries[0].stream_chunks is not None
     assert logged_entries[0].request_headers == sent_headers
+    assert logged_entries[0].response_body["ai_proxy_route"] == "provider:mapped-model"
 
 
 @pytest.mark.asyncio
@@ -318,19 +326,35 @@ async def test_streaming_helpers_error_response(monkeypatch: pytest.MonkeyPatch)
         start_time=0.0,
         upstream_stream=error_stream,
         extract_error_message=lambda body: body["error"]["message"],
+        inject_ai_proxy_route=lambda body, route: {
+            **body,
+            "ai_proxy_route": f"{route.provider_name}:{route.mapped_model}",
+        },
         proxy_response_headers=lambda headers: dict(headers),
     )
 
     assert error_response.status_code == 429
-    assert error_response.body == b'{"error":{"message":"rate limited"}}'
+    assert error_response.body == b'{"error": {"message": "rate limited"}, "ai_proxy_route": "provider:mapped-model"}'
 
 
 @pytest.mark.asyncio
 async def test_streaming_helpers_handle_missing_body_and_transport_errors() -> None:
     state = streaming.StreamState(response_headers={"content-type": "text/event-stream"}, response_status_code=200)
-    chunks = [chunk async for chunk in streaming.relay_stream_chunks(SimpleNamespace(body=None), state)]
+    chunks = [
+        chunk
+        async for chunk in streaming.relay_stream_chunks(
+            SimpleNamespace(body=None),
+            state,
+            ai_proxy_route="provider:mapped-model",
+        )
+    ]
 
-    assert chunks == [b'data: {"error": {"message": "Provider stream was not established"}}\n\n']
+    assert chunks == [
+        (
+            b'data: {"error": {"message": "Provider stream was not established"}, '
+            b'"ai_proxy_route": "provider:mapped-model"}\n\n'
+        )
+    ]
     assert state.response_status_code == 502
 
     request_error = RuntimeError("boom")
@@ -340,10 +364,20 @@ async def test_streaming_helpers_handle_missing_body_and_transport_errors() -> N
         yield b""  # pragma: no cover
 
     state = streaming.StreamState()
-    error_chunks = [chunk async for chunk in streaming.relay_stream_chunks(SimpleNamespace(body=broken_body()), state)]
+    error_chunks = [
+        chunk
+        async for chunk in streaming.relay_stream_chunks(
+            SimpleNamespace(body=broken_body()),
+            state,
+            ai_proxy_route="provider:mapped-model",
+        )
+    ]
 
-    assert error_chunks == [b'data: {"error": {"message": "boom"}}\n\n']
+    assert error_chunks == [b'data: {"error": {"message": "boom"}, "ai_proxy_route": "provider:mapped-model"}\n\n']
     assert state.stream_error_message == "boom"
 
     assert streaming.assembled_stream_response(streaming.StreamState()) is None
     assert streaming.stream_error_event("boom") == b'data: {"error": {"message": "boom"}}\n\n'
+    assert streaming.stream_error_event("boom", ai_proxy_route="provider:mapped-model") == (
+        b'data: {"error": {"message": "boom"}, "ai_proxy_route": "provider:mapped-model"}\n\n'
+    )

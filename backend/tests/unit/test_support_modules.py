@@ -20,7 +20,7 @@ from ai_proxy.config.settings import (
 from ai_proxy.core import access, modification, routing
 from ai_proxy.core.access import check_model_access
 from ai_proxy.core.modification import apply_modifications
-from ai_proxy.core.routing import _parse_mapping, resolve_model
+from ai_proxy.core.routing import _format_route_label, _parse_mapping, resolve_model
 from ai_proxy.db import engine
 from ai_proxy.security.auth import hash_api_key, mask_api_key, validate_proxy_api_key, validate_ui_api_key
 
@@ -53,6 +53,8 @@ providers:
     endpoint: https://provider.example
 model_mappings:
   gpt-4o-mini: primary:mapped-model
+response:
+    include_ai_proxy_route: false
 access_rules:
   abc123:
     allow: [gpt-*]
@@ -71,6 +73,7 @@ grouping:
 
     assert config.providers["primary"].endpoint == "https://provider.example"
     assert config.model_mappings["gpt-4o-mini"] == "primary:mapped-model"
+    assert config.response.include_ai_proxy_route is False
     assert loader.get_app_config() == config
     assert loader.reload_config(str(config_path)).logging.batch_size == 10
 
@@ -220,6 +223,8 @@ def test_registry_and_routing(monkeypatch: pytest.MonkeyPatch) -> None:
     assert _parse_mapping("provider") == ("provider", "provider", None)
     assert _parse_mapping("provider:model+slug") == ("provider", "model", ["slug"])
     assert _parse_mapping("provider:model+a,b") == ("provider", "model", ["a", "b"])
+    assert _format_route_label("provider", "model", None) == "provider:model"
+    assert _format_route_label("provider", "model", ["a", "b"]) == "provider:model+a,b"
 
     monkeypatch.setattr(routing, "get_app_config", lambda: config)
     monkeypatch.setattr(routing, "get_adapter_registry", lambda: registry)
@@ -229,8 +234,10 @@ def test_registry_and_routing(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert exact.provider_name == "primary"
     assert exact.mapped_model == "mapped-model"
+    assert exact.route_label == "primary:mapped-model"
     assert wildcard.provider_name == "secondary"
     assert wildcard.mapped_model == "gpt-4o"
+    assert wildcard.route_label == "secondary:gpt-4o"
 
     with pytest.raises(ValueError, match="No route found"):
         resolve_model("unknown-model")
@@ -248,7 +255,7 @@ def test_proxy_and_ui_auth(monkeypatch: pytest.MonkeyPatch) -> None:
     assert mask_api_key("abcdefghijk") == "abc*****ijk"
     assert validate_proxy_api_key("proxy-secret")[0] is True
     assert validate_proxy_api_key("proxy-secret")[2] is True
-    ok, key_hash, is_known = validate_proxy_api_key("wrong")
+    ok, _key_hash, is_known = validate_proxy_api_key("wrong")
     assert (ok, is_known) == (False, False)
     assert validate_ui_api_key("ui-secret") is True
     assert validate_ui_api_key("wrong") is False

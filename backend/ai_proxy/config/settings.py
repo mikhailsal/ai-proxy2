@@ -31,6 +31,10 @@ class GroupingConfig(BaseModel):
     default_field: str = "system_prompt_first_user_first_assistant"
 
 
+class ResponseConfig(BaseModel):
+    include_ai_proxy_route: bool = True
+
+
 class AccessRule(BaseModel):
     allow: list[str] = Field(default_factory=list)
     block: list[str] = Field(default_factory=list)
@@ -55,6 +59,7 @@ class KeyMappingEntry(BaseModel):
 class AppConfig(BaseModel):
     providers: dict[str, ProviderConfig] = Field(default_factory=dict)
     model_mappings: dict[str, str] = Field(default_factory=dict)
+    response: ResponseConfig = Field(default_factory=ResponseConfig)
     access_rules: dict[str, AccessRule] = Field(default_factory=dict)
     modification_rules: list[ModificationRule] = Field(default_factory=list)
     bypass: BypassConfig = Field(default_factory=BypassConfig)

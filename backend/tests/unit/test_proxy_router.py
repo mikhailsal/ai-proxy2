@@ -81,10 +81,17 @@ async def test_non_streaming_provider_http_error_is_preserved(
         )
 
     assert response.status_code == 429
-    assert response.json() == {"error": {"message": "Too many requests"}}
+    assert response.json() == {
+        "error": {"message": "Too many requests"},
+        "ai_proxy_route": "openrouter:provider-model",
+    }
     assert response.headers["x-upstream"] == "rate-limit"
     assert logged_entries[0].response_status_code == 429
     assert logged_entries[0].error_message == "Too many requests"
+    assert logged_entries[0].client_response_body == {
+        "error": {"message": "Too many requests"},
+        "ai_proxy_route": "openrouter:provider-model",
+    }
 
 
 @pytest.mark.asyncio
@@ -116,7 +123,10 @@ async def test_non_streaming_transport_errors_become_gateway_failures(
         )
 
     assert response.status_code == 502
-    assert response.json() == {"error": {"message": "Provider transport error: boom"}}
+    assert response.json() == {
+        "error": {"message": "Provider transport error: boom"},
+        "ai_proxy_route": "openrouter:provider-model",
+    }
     entry = logged_entries[0]
     assert entry.response_status_code == 502
     assert entry.error_message == "boom"
@@ -124,5 +134,8 @@ async def test_non_streaming_transport_errors_become_gateway_failures(
     assert entry.request_headers["Content-Type"] == "application/json"
     assert entry.client_request_body is not None
     assert entry.client_request_body["model"] == "gpt-4o-mini"
-    assert entry.client_response_body == {"error": {"message": "Provider transport error: boom"}}
+    assert entry.client_response_body == {
+        "error": {"message": "Provider transport error: boom"},
+        "ai_proxy_route": "openrouter:provider-model",
+    }
     assert entry.client_response_headers == {"content-type": "application/json"}

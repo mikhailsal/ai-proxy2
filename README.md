@@ -197,6 +197,7 @@ Configuration is split into two files:
 |---|---|
 | `providers` | Named provider definitions (type, endpoint, headers) |
 | `model_mappings` | `client-model: provider:real-model` mappings (glob patterns ok) |
+| `response.include_ai_proxy_route` | Add the resolved `provider:model` route to JSON client responses (default: true) |
 | `bypass.enabled` | Accept unknown keys and forward them to the provider (default: false) |
 | `access_rules` | Per-key model allow/deny lists (optional) |
 | `modification_rules` | Rewrite request fields before forwarding (optional) |

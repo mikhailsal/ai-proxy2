@@ -18,11 +18,13 @@ class RouteResult:
         mapped_model: str,
         adapter: BaseAdapter,
         pinned_providers: list[str] | None = None,
+        route_label: str | None = None,
     ) -> None:
         self.provider_name = provider_name
         self.mapped_model = mapped_model
         self.adapter = adapter
         self.pinned_providers = pinned_providers
+        self.route_label = route_label or _format_route_label(provider_name, mapped_model, pinned_providers)
 
 
 def resolve_model(model_requested: str) -> RouteResult:
@@ -38,7 +40,13 @@ def resolve_model(model_requested: str) -> RouteResult:
         pinned = _merge_pinned(pinned, client_pinned)
         adapter = registry.get(provider_name)
         if adapter:
-            return RouteResult(provider_name, mapped_model, adapter, pinned_providers=pinned)
+            return RouteResult(
+                provider_name,
+                mapped_model,
+                adapter,
+                pinned_providers=pinned,
+                route_label=_format_route_label(provider_name, mapped_model, pinned),
+            )
 
     # Try wildcard match
     for pattern, mapping in config.model_mappings.items():
@@ -49,7 +57,13 @@ def resolve_model(model_requested: str) -> RouteResult:
                 mapped_model = lookup_model
             adapter = registry.get(provider_name)
             if adapter:
-                return RouteResult(provider_name, mapped_model, adapter, pinned_providers=pinned)
+                return RouteResult(
+                    provider_name,
+                    mapped_model,
+                    adapter,
+                    pinned_providers=pinned,
+                    route_label=_format_route_label(provider_name, mapped_model, pinned),
+                )
 
     msg = f"No route found for model: {lookup_model}"
     raise ValueError(msg)
@@ -102,3 +116,10 @@ def _merge_pinned(
     if config_pinned:
         return config_pinned
     return client_pinned
+
+
+def _format_route_label(provider_name: str, mapped_model: str, pinned: list[str] | None) -> str:
+    route_label = f"{provider_name}:{mapped_model}"
+    if pinned:
+        route_label = f"{route_label}+{','.join(pinned)}"
+    return route_label

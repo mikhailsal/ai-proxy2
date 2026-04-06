@@ -80,7 +80,7 @@ model_mappings:
   "x-ai/grok-4.20-beta": "openrouter:x-ai/grok-4.20-beta"
   "x-ai/grok-4.1-fast": "openrouter:x-ai/grok-4.1-fast"
   # MiniMax (pinned to minimax provider on OpenRouter)
-  "minimax/minimax-m2.7": "openrouter:minimax/minimax-m2.7+minimax"
+  "minimax/minimax-m2.7": "kilocode:minimax/minimax-m2.7+minimax"
   "minimax/minimax-m2.5": "openrouter:minimax/minimax-m2.5+minimax"
   # StepFun
   "stepfun/step-3.5-flash:free": "openrouter:stepfun/step-3.5-flash:free"
@@ -308,6 +308,10 @@ model_mappings:
   "kilocode/qwen/qwen3.6-plus:free": "kilocode:qwen/qwen3.6-plus:free"
   "kilocode/x-ai/grok-code-fast-1:optimized:free": "kilocode:x-ai/grok-code-fast-1:optimized:free"
   "kilocode/nvidia/nemotron-3-super-120b-a12b:free": "kilocode:nvidia/nemotron-3-super-120b-a12b:free"
+
+# Response shaping
+response:
+  include_ai_proxy_route: true
 
 # ── Bypass mode ─────────────────────────────────────────────────────
 # When enabled, clients who are NOT in the api_keys list can still use

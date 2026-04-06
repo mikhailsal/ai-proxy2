@@ -84,6 +84,7 @@ def load_config(config_path: str, secrets_path: str | None = None) -> AppConfig:
     _app_config = AppConfig(
         providers=providers,
         model_mappings=raw.get("model_mappings", {}),
+        response=raw.get("response", {}),
         access_rules=raw.get("access_rules", {}),
         modification_rules=raw.get("modification_rules", []),
         bypass=raw.get("bypass", {}),
