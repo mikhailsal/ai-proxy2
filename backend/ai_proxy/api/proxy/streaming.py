@@ -26,6 +26,7 @@ class StreamState:
     chunks_collected: list[JsonObject] = field(default_factory=list)
     merged_choices: dict[int, JsonObject] = field(default_factory=dict)
     usage_data: JsonObject = field(default_factory=dict)
+    extra_fields: JsonObject = field(default_factory=dict)
     response_headers: dict[str, str] = field(default_factory=dict)
     response_status_code: int = 200
     stream_error_message: str | None = None
@@ -161,12 +162,20 @@ async def relay_stream_chunks(
 _STRING_MERGE_KEYS = frozenset({"content", "reasoning_content", "reasoning", "refusal"})
 
 
+_SPECIAL_CHUNK_KEYS = frozenset({"choices", "usage"})
+
+
 def capture_stream_chunk(state: StreamState, chunk_bytes: bytes) -> None:
     parsed = parse_sse_chunk(chunk_bytes)
     if not parsed:
         return
 
     state.chunks_collected.append(parsed)
+
+    for key, value in parsed.items():
+        if key not in _SPECIAL_CHUNK_KEYS and value is not None:
+            state.extra_fields[key] = value
+
     for choice in parsed.get("choices", []):
         idx = choice.get("index", 0)
         delta = choice.get("delta", {})
@@ -313,7 +322,7 @@ def assembled_stream_response(state: StreamState) -> JsonObject | None:
     if not choices:
         choices.append({"index": 0, "message": {"role": "assistant", "content": ""}})
 
-    return {
-        "choices": choices,
-        "usage": state.usage_data,
-    }
+    result: JsonObject = dict(state.extra_fields)
+    result["choices"] = choices
+    result["usage"] = state.usage_data
+    return result

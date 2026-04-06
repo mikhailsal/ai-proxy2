@@ -271,3 +271,75 @@ def test_role_not_concatenated() -> None:
     msg = _msg(state)
     assert msg["role"] == "assistant"
     assert msg["content"] == "Hi there"
+
+
+def test_top_level_fields_captured_in_assembled_response() -> None:
+    """Every field the provider returns at chunk top-level must appear in
+    the assembled response — the proxy is a debug tool and must not
+    silently discard data."""
+    state = streaming.StreamState()
+    streaming.capture_stream_chunk(
+        state,
+        _sse(
+            {
+                "id": "gen-abc123",
+                "model": "minimax/minimax-m2.7-20260318",
+                "object": "chat.completion.chunk",
+                "created": 1775461206,
+                "provider": "Minimax",
+                "system_fingerprint": "fp_abc",
+                "choices": [{"index": 0, "delta": {"role": "assistant", "content": "Hi"}}],
+            }
+        ),
+    )
+    streaming.capture_stream_chunk(
+        state,
+        _sse(
+            {
+                "id": "gen-abc123",
+                "model": "minimax/minimax-m2.7-20260318",
+                "object": "chat.completion.chunk",
+                "created": 1775461206,
+                "provider": "Minimax",
+                "choices": [{"index": 0, "delta": {"content": "!"}, "finish_reason": "stop"}],
+            }
+        ),
+    )
+    usage = {"prompt_tokens": 5, "completion_tokens": 2, "total_tokens": 7, "cost": 0.001}
+    streaming.capture_stream_chunk(state, _sse({"usage": usage}))
+
+    resp = streaming.assembled_stream_response(state)
+    assert resp is not None
+    assert resp["id"] == "gen-abc123"
+    assert resp["model"] == "minimax/minimax-m2.7-20260318"
+    assert resp["object"] == "chat.completion.chunk"
+    assert resp["created"] == 1775461206
+    assert resp["provider"] == "Minimax"
+    assert resp["system_fingerprint"] == "fp_abc"
+    assert resp["choices"][0]["message"]["content"] == "Hi!"
+    assert resp["choices"][0]["finish_reason"] == "stop"
+    assert resp["usage"]["cost"] == 0.001
+
+
+def test_unknown_top_level_fields_not_discarded() -> None:
+    """If a provider sends a top-level field we've never seen before,
+    it must still appear in the assembled response.  No hardcoded
+    whitelist should filter it out."""
+    state = streaming.StreamState()
+    streaming.capture_stream_chunk(
+        state,
+        _sse(
+            {
+                "id": "gen-xyz",
+                "completely_new_field": {"nested": True},
+                "another_surprise": 42,
+                "choices": [{"index": 0, "delta": {"role": "assistant", "content": "ok"}}],
+            }
+        ),
+    )
+
+    resp = streaming.assembled_stream_response(state)
+    assert resp is not None
+    assert resp["completely_new_field"] == {"nested": True}
+    assert resp["another_surprise"] == 42
+    assert resp["id"] == "gen-xyz"
