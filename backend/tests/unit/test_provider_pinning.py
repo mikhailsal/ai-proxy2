@@ -12,7 +12,7 @@ from ai_proxy.adapters.base import ProviderResponse
 from ai_proxy.api.proxy import router as proxy_router
 from ai_proxy.app import create_app
 from ai_proxy.config.settings import AppConfig
-from ai_proxy.core.routing import RouteResult, _parse_mapping
+from ai_proxy.core.routing import RouteResult, _merge_pinned, _parse_mapping, _strip_client_provider_suffix
 
 # ── _parse_mapping unit tests ─────────────────────────────────────────
 
@@ -83,12 +83,13 @@ class TestApplyProviderPinning:
     def test_injects_provider_order(self):
         body: dict[str, Any] = {"model": "minimax/minimax-m2.7", "messages": []}
         proxy_router._apply_provider_pinning(body, self._make_route(["minimax"]))
-        assert body["provider"] == {"order": ["minimax"]}
+        assert body["provider"] == {"order": ["minimax"], "allow_fallbacks": False}
 
     def test_injects_multiple_providers(self):
         body: dict[str, Any] = {"model": "m", "messages": []}
         proxy_router._apply_provider_pinning(body, self._make_route(["deepinfra", "together"]))
         assert body["provider"]["order"] == ["deepinfra", "together"]
+        assert body["provider"]["allow_fallbacks"] is False
 
     def test_client_order_takes_priority(self):
         body: dict[str, Any] = {
@@ -103,17 +104,28 @@ class TestApplyProviderPinning:
         body: dict[str, Any] = {
             "model": "m",
             "messages": [],
-            "provider": {"allow_fallbacks": False, "data_collection": "deny"},
+            "provider": {"data_collection": "deny"},
         }
         proxy_router._apply_provider_pinning(body, self._make_route(["minimax"]))
         assert body["provider"]["order"] == ["minimax"]
         assert body["provider"]["allow_fallbacks"] is False
         assert body["provider"]["data_collection"] == "deny"
 
+    def test_client_allow_fallbacks_true_not_overwritten(self):
+        """Client explicitly set allow_fallbacks=True — we respect their choice."""
+        body: dict[str, Any] = {
+            "model": "m",
+            "messages": [],
+            "provider": {"allow_fallbacks": True},
+        }
+        proxy_router._apply_provider_pinning(body, self._make_route(["minimax"]))
+        assert body["provider"]["order"] == ["minimax"]
+        assert body["provider"]["allow_fallbacks"] is True
+
     def test_client_provider_not_dict_gets_overwritten(self):
         body: dict[str, Any] = {"model": "m", "messages": [], "provider": "invalid"}
         proxy_router._apply_provider_pinning(body, self._make_route(["minimax"]))
-        assert body["provider"] == {"order": ["minimax"]}
+        assert body["provider"] == {"order": ["minimax"], "allow_fallbacks": False}
 
 
 # ── Integration: full request flow ────────────────────────────────────
@@ -179,7 +191,7 @@ async def test_pinning_injected_into_forwarded_body(monkeypatch: pytest.MonkeyPa
 
     assert resp.status_code == 200
     assert adapter.last_request_body is not None
-    assert adapter.last_request_body["provider"] == {"order": ["minimax"]}
+    assert adapter.last_request_body["provider"] == {"order": ["minimax"], "allow_fallbacks": False}
 
 
 @pytest.mark.asyncio
@@ -255,3 +267,55 @@ async def test_no_pinning_when_route_has_none(monkeypatch: pytest.MonkeyPatch) -
 
     assert resp.status_code == 200
     assert "provider" not in adapter.last_request_body
+
+
+# ── _strip_client_provider_suffix unit tests ──────────────────────────
+
+
+class TestStripClientProviderSuffix:
+    def test_no_suffix(self):
+        model, pinned = _strip_client_provider_suffix("minimax/minimax-m2.7")
+        assert model == "minimax/minimax-m2.7"
+        assert pinned is None
+
+    def test_single_suffix(self):
+        model, pinned = _strip_client_provider_suffix("minimax/minimax-m2.7+minimax")
+        assert model == "minimax/minimax-m2.7"
+        assert pinned == ["minimax"]
+
+    def test_multiple_suffixes(self):
+        model, pinned = _strip_client_provider_suffix("deepseek/deepseek-v3.2+deepinfra,together")
+        assert model == "deepseek/deepseek-v3.2"
+        assert pinned == ["deepinfra", "together"]
+
+    def test_slash_in_slug(self):
+        model, pinned = _strip_client_provider_suffix("deepseek/deepseek-r1+novita/bf16")
+        assert model == "deepseek/deepseek-r1"
+        assert pinned == ["novita/bf16"]
+
+    def test_empty_suffix_ignored(self):
+        model, pinned = _strip_client_provider_suffix("openrouter:model+")
+        assert model == "openrouter:model+"
+        assert pinned is None
+
+    def test_whitespace_stripped(self):
+        model, pinned = _strip_client_provider_suffix("model+ openai , together ")
+        assert model == "model"
+        assert pinned == ["openai", "together"]
+
+
+# ── _merge_pinned unit tests ──────────────────────────────────────────
+
+
+class TestMergePinned:
+    def test_config_takes_priority(self):
+        assert _merge_pinned(["config-slug"], ["client-slug"]) == ["config-slug"]
+
+    def test_client_used_as_fallback(self):
+        assert _merge_pinned(None, ["client-slug"]) == ["client-slug"]
+
+    def test_both_none(self):
+        assert _merge_pinned(None, None) is None
+
+    def test_empty_config_uses_client(self):
+        assert _merge_pinned([], ["client-slug"]) == ["client-slug"]

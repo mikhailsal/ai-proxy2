@@ -29,26 +29,29 @@ def resolve_model(model_requested: str) -> RouteResult:
     config = get_app_config()
     registry = get_adapter_registry()
 
+    lookup_model, client_pinned = _strip_client_provider_suffix(model_requested)
+
     # Try exact match first
-    if model_requested in config.model_mappings:
-        mapping = config.model_mappings[model_requested]
+    if lookup_model in config.model_mappings:
+        mapping = config.model_mappings[lookup_model]
         provider_name, mapped_model, pinned = _parse_mapping(mapping)
+        pinned = _merge_pinned(pinned, client_pinned)
         adapter = registry.get(provider_name)
         if adapter:
             return RouteResult(provider_name, mapped_model, adapter, pinned_providers=pinned)
 
     # Try wildcard match
     for pattern, mapping in config.model_mappings.items():
-        if fnmatch.fnmatch(model_requested, pattern):
+        if fnmatch.fnmatch(lookup_model, pattern):
             provider_name, mapped_model, pinned = _parse_mapping(mapping)
-            # If mapped_model is the same as the pattern, use the actual requested model
+            pinned = _merge_pinned(pinned, client_pinned)
             if mapped_model == pattern or mapped_model == "*":
-                mapped_model = model_requested
+                mapped_model = lookup_model
             adapter = registry.get(provider_name)
             if adapter:
                 return RouteResult(provider_name, mapped_model, adapter, pinned_providers=pinned)
 
-    msg = f"No route found for model: {model_requested}"
+    msg = f"No route found for model: {lookup_model}"
     raise ValueError(msg)
 
 
@@ -72,3 +75,30 @@ def _parse_mapping(mapping: str) -> tuple[str, str, list[str] | None]:
             pinned = slugs
 
     return provider, model, pinned
+
+
+def _strip_client_provider_suffix(model: str) -> tuple[str, list[str] | None]:
+    """Extract an optional ``+provider`` suffix from the client's model name.
+
+    Some clients cannot send the ``provider`` field in the request body, so
+    they append ``+slug`` (or ``+slug1,slug2``) to the model name.  This
+    function splits the suffix off and returns ``(clean_model, slugs | None)``.
+    """
+    if "+" not in model:
+        return model, None
+
+    base, pin_part = model.rsplit("+", 1)
+    slugs = [s.strip() for s in pin_part.split(",") if s.strip()]
+    if not slugs:
+        return model, None
+    return base, slugs
+
+
+def _merge_pinned(
+    config_pinned: list[str] | None,
+    client_pinned: list[str] | None,
+) -> list[str] | None:
+    """Config-level pins take priority; client suffix is used as fallback."""
+    if config_pinned:
+        return config_pinned
+    return client_pinned
