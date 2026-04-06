@@ -5,8 +5,13 @@ import type { HighlightRule } from '../JsonViewer/JsonViewer';
 import { JsonViewer } from '../JsonViewer/JsonViewer';
 import { DiffJsonViewer } from '../JsonViewer/DiffJsonViewer';
 import type { RequestDetail as RequestDetailType, RequestSummary } from '../../types';
-import { countTokens, selectEncoding } from '../../utils/cacheBoundary';
 import { tpsColor, durationColor, costColor, cacheRatioColor, messageCountColor } from '../RequestBrowser/metricColors';
+import {
+  buildResponseHighlightRules,
+  buildTokenEstimateRules,
+  requestBodyPaths,
+  responseBodyCollapsedPaths,
+} from './requestDetailHelpers';
 
 interface RequestDetailProps {
   requestId: string;
@@ -186,29 +191,19 @@ function DiffOrPlainSection({ client, provider, title, diffTitle, collapsed = fa
   collapsedPaths?: string[]; expandedPaths?: string[]; highlightRules?: HighlightRule[];
 }) {
   if (hasDiff(client, provider)) {
-    return <DiffSection left={client} right={provider} title={diffTitle} />;
+    return (
+      <DiffSection
+        left={client}
+        right={provider}
+        title={diffTitle}
+        collapsedPaths={collapsedPaths}
+        expandedPaths={expandedPaths}
+        highlightRules={highlightRules}
+      />
+    );
   }
   const data = provider ?? client;
   return data ? <JsonSection data={data} title={title} collapsed={collapsed} collapsedPaths={collapsedPaths} expandedPaths={expandedPaths} highlightRules={highlightRules} /> : null;
-}
-
-function responseBodyCollapsedPaths(body: Record<string, unknown> | null): string[] {
-  if (!body) return [];
-  return Object.keys(body).filter(k => k !== 'choices');
-}
-
-function requestBodyPaths(body: Record<string, unknown> | null): { collapsed: string[]; expanded: string[] } {
-  if (!body) return { collapsed: [], expanded: [] };
-  const collapsed: string[] = [];
-  const expanded: string[] = [];
-  const messages = body.messages;
-  if (Array.isArray(messages) && messages.length > 0) {
-    for (let i = 0; i < messages.length - 1; i++) {
-      collapsed.push(`messages.${i}`);
-    }
-    expanded.push(`messages.${messages.length - 1}`);
-  }
-  return { collapsed, expanded };
 }
 
 function RequestDetailBody({
@@ -219,6 +214,7 @@ function RequestDetailBody({
   isLoading: boolean;
 }) {
   const tokenEstimateRules = useMemo(() => buildTokenEstimateRules(data), [data]);
+  const responseHighlightRules = useMemo(() => buildResponseHighlightRules(data), [data]);
 
   if (isLoading) return <div style={styles.loading}>Loading detail…</div>;
   if (!data) return null;
@@ -232,6 +228,7 @@ function RequestDetailBody({
         client={data.response_body} provider={data.client_response_body}
         title="Response Body" diffTitle="Response Body (Provider → Client)"
         collapsedPaths={responseCollapsed} expandedPaths={['choices']}
+        highlightRules={responseHighlightRules}
       />
       <DiffOrPlainSection
         client={data.client_request_body} provider={data.request_body}
@@ -287,10 +284,16 @@ function DiffSection({
   left,
   right,
   title,
+  collapsedPaths = [],
+  expandedPaths = [],
+  highlightRules = [],
 }: {
   left: unknown;
   right: unknown;
   title: string;
+  collapsedPaths?: string[];
+  expandedPaths?: string[];
+  highlightRules?: HighlightRule[];
 }) {
   const [showDiff, setShowDiff] = useState(true);
 
@@ -307,7 +310,7 @@ function DiffSection({
         {showDiff ? (
           <DiffJsonViewer left={left} right={right} />
         ) : (
-          <JsonViewer data={right} />
+          <JsonViewer data={right} collapsedPaths={collapsedPaths} expandedPaths={expandedPaths} highlightRules={highlightRules} />
         )}
       </pre>
     </Section>
@@ -357,88 +360,6 @@ function formatDetailDuration(ms: number): string {
   if (seconds < 0.1) return `${Math.round(ms)}ms`;
   if (seconds < 10) return `${seconds.toFixed(1)}s`;
   return `${Math.round(seconds)}s`;
-}
-
-function formatTokenEstimate(count: number): string {
-  if (count >= 1000) return `~${(count / 1000).toFixed(1)}k tokens`;
-  return `~${count} tokens`;
-}
-
-function messageToText(msg: Record<string, unknown>): string {
-  const parts: string[] = [];
-  if (typeof msg.role === 'string') parts.push(msg.role);
-  if (typeof msg.name === 'string') parts.push(msg.name);
-  const content = msg.content;
-  if (typeof content === 'string') {
-    parts.push(content);
-  } else if (Array.isArray(content)) {
-    for (const part of content) {
-      if (typeof part === 'object' && part !== null && (part as Record<string, unknown>).type === 'text') {
-        const text = (part as Record<string, unknown>).text;
-        if (typeof text === 'string') parts.push(text);
-      }
-    }
-  }
-  if (Array.isArray(msg.tool_calls)) {
-    parts.push(JSON.stringify(msg.tool_calls));
-  }
-  return parts.join('\n');
-}
-
-function buildTokenEstimateRules(data: RequestDetailType | undefined): HighlightRule[] {
-  if (!data) return [];
-
-  const body = data.request_body ?? data.client_request_body;
-  if (!body || typeof body !== 'object') return [];
-
-  const model = data.model_requested ?? '';
-  const encoding = selectEncoding(model);
-  const actualInputTokens = data.input_tokens ?? 0;
-
-  const rawToolEstimates: number[] = [];
-  const rawMsgEstimates: number[] = [];
-
-  const tools = (body as Record<string, unknown>).tools;
-  if (Array.isArray(tools)) {
-    for (const tool of tools) {
-      rawToolEstimates.push(countTokens(JSON.stringify(tool), encoding));
-    }
-  }
-
-  const messages = (body as Record<string, unknown>).messages;
-  if (Array.isArray(messages)) {
-    for (const m of messages) {
-      const msg = m as Record<string, unknown>;
-      rawMsgEstimates.push(countTokens(messageToText(msg), encoding) + 4);
-    }
-  }
-
-  const rawTotal = rawToolEstimates.reduce((s, v) => s + v, 0) + rawMsgEstimates.reduce((s, v) => s + v, 0);
-  const scale = rawTotal > 0 && actualInputTokens > 0 ? actualInputTokens / rawTotal : 1;
-
-  const rules: HighlightRule[] = [];
-
-  if (rawToolEstimates.length > 0) {
-    let toolsTotal = 0;
-    for (let i = 0; i < rawToolEstimates.length; i++) {
-      const calibrated = Math.round(rawToolEstimates[i] * scale);
-      toolsTotal += calibrated;
-      rules.push({ path: `tools.${i}`, label: formatTokenEstimate(calibrated) });
-    }
-    rules.push({ path: 'tools', label: formatTokenEstimate(toolsTotal) });
-  }
-
-  if (rawMsgEstimates.length > 0) {
-    let msgsTotal = 0;
-    for (let i = 0; i < rawMsgEstimates.length; i++) {
-      const calibrated = Math.round(rawMsgEstimates[i] * scale);
-      msgsTotal += calibrated;
-      rules.push({ path: `messages.${i}`, label: formatTokenEstimate(calibrated) });
-    }
-    rules.push({ path: 'messages', label: formatTokenEstimate(msgsTotal) });
-  }
-
-  return rules;
 }
 
 function statusBg(code: number | null) {

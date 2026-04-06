@@ -1,13 +1,11 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApiContext } from '../../src/hooks/useApi';
 import { JsonViewer } from '../../src/components/JsonViewer/JsonViewer';
 import { DiffJsonViewer } from '../../src/components/JsonViewer/DiffJsonViewer';
 import { RequestDetail } from '../../src/components/RequestDetail/RequestDetail';
 import { ChatView } from '../../src/components/ChatView/ChatView';
-import type { ConversationMessage, RequestDetail as RequestDetailType, RequestSummary } from '../../src/types';
+import { makeConversationMessages, makeRequestDetail, makeRequestSummary, renderWithApi } from './detail-and-chat.helpers';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -279,6 +277,56 @@ describe('RequestDetail', () => {
     expect(screen.getByText('Response Headers (Provider → Client)')).toBeInTheDocument();
   });
 
+  it('highlights ai_proxy_route in response bodies', async () => {
+    const detail = makeRequestDetail({
+      response_body: {
+        choices: [{ message: { role: 'assistant', content: 'reply' } }],
+      },
+      client_response_body: {
+        choices: [{ message: { role: 'assistant', content: 'reply' } }],
+        ai_proxy_route: 'provider:mapped-model',
+      },
+    });
+    const api = {
+      downloadExport: vi.fn().mockResolvedValue(undefined),
+      getRequest: vi.fn().mockResolvedValue(detail),
+    };
+
+    renderWithApi(
+      <RequestDetail onClose={vi.fn()} requestId="req-response-diff" requestSummary={makeRequestSummary({})} />,
+      api,
+    );
+
+    await waitFor(() => expect(screen.getByText('Response Body (Provider → Client)')).toBeInTheDocument());
+    await userEvent.click(screen.getByRole('button', { name: 'Plain' }));
+
+    expect(screen.getByText('added by proxy')).toBeInTheDocument();
+    expect(screen.getByText('"provider:mapped-model"')).toBeInTheDocument();
+  });
+
+  it('highlights ai_proxy_route when only a single response body is available', async () => {
+    const detail = makeRequestDetail({
+      response_body: {
+        choices: [{ message: { role: 'assistant', content: 'reply' } }],
+        ai_proxy_route: 'provider:mapped-model',
+      },
+      client_response_body: null,
+    });
+    const api = {
+      downloadExport: vi.fn().mockResolvedValue(undefined),
+      getRequest: vi.fn().mockResolvedValue(detail),
+    };
+
+    renderWithApi(
+      <RequestDetail onClose={vi.fn()} requestId="req-response-plain" requestSummary={makeRequestSummary({})} />,
+      api,
+    );
+
+    await waitFor(() => expect(screen.getByText('Response Body')).toBeInTheDocument());
+    expect(screen.getByText('added by proxy')).toBeInTheDocument();
+    expect(screen.getByText('"provider:mapped-model"')).toBeInTheDocument();
+  });
+
   it('shows response headers as plain section when no diff exists', async () => {
     const detail = makeRequestDetail({
       response_headers: { 'content-type': 'application/json' },
@@ -411,86 +459,3 @@ describe('ChatView', () => {
     await waitFor(() => expect(screen.getByText('No messages in this conversation.')).toBeInTheDocument());
   });
 });
-
-function renderWithApi(ui: React.ReactElement, api: Record<string, unknown>) {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <ApiContext.Provider value={api as never}>{ui}</ApiContext.Provider>
-    </QueryClientProvider>,
-  );
-}
-
-function makeRequestSummary(overrides: Partial<RequestSummary>): RequestSummary {
-  return {
-    id: overrides.id ?? 'req-1',
-    timestamp: overrides.timestamp ?? '2024-01-01T00:00:00Z',
-    client_ip: null,
-    client_api_key_hash: null,
-    method: 'POST',
-    path: '/v1/chat/completions',
-    model_requested: overrides.model_requested ?? 'gpt-4o-mini',
-    model_resolved: overrides.model_resolved ?? 'gpt-4o-mini',
-    response_status_code: overrides.response_status_code ?? 200,
-    latency_ms: overrides.latency_ms ?? 42,
-    input_tokens: 1,
-    output_tokens: 2,
-    total_tokens: 3,
-    cached_input_tokens: null,
-    cost: overrides.cost ?? 0.123456,
-    cache_status: overrides.cache_status ?? 'hit',
-    error_message: overrides.error_message ?? null,
-    last_user_message: null,
-    assistant_response: null,
-  };
-}
-
-function makeRequestDetail(overrides?: Partial<RequestDetailType>): RequestDetailType {
-  return {
-    ...makeRequestSummary({ error_message: 'backend error' }),
-    request_headers: { authorization: 'Bearer redacted' },
-    client_request_headers: null,
-    request_body: {
-      tools: [{ type: 'function', function: { name: 'lookup_weather' } }],
-      messages: [
-        { role: 'system', content: 'system prompt' },
-        { role: 'user', content: 'hello' },
-      ],
-    },
-    client_request_body: null,
-    response_headers: { 'content-type': 'application/json' },
-    client_response_headers: null,
-    response_body: { choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: 'reply' } }] },
-    client_response_body: null,
-    stream_chunks: [{ delta: 'hi' }],
-    reasoning_tokens: null,
-    metadata: null,
-    ...overrides,
-  };
-}
-
-function msg(overrides: Partial<ConversationMessage> & { id: string; role: string; content: string }): ConversationMessage {
-  return {
-    node_id: overrides.id,
-    parent: null,
-    children: [],
-    origin: 'request', raw_message: { role: overrides.role, content: overrides.content },
-    tool_names: [], meta_tags: {}, source_request_id: 'req-1',
-    source_request_timestamp: '2024-01-01T00:00:00Z', source_message_index: 0,
-    last_seen_at: '2024-01-02T00:00:00Z', repeat_count: 2,
-    model: 'gpt-4o-mini', latency_ms: 42, total_tokens: 3, ...overrides,
-  };
-}
-
-function makeConversationMessages(): ConversationMessage[] {
-  return [
-    msg({ id: 'msg-1', node_id: 'n1', parent: null, children: ['n2'], role: 'system', content: 'system prompt', meta_tags: { name: 'system' } }),
-    msg({ id: 'msg-2', node_id: 'n2', parent: 'n1', children: ['n2b', 'n3'], role: 'user', content: 'hello', source_message_index: 1 }),
-    msg({ id: 'msg-2b', node_id: 'n2b', parent: 'n2', children: [], origin: 'response', role: 'assistant', content: 'Tool call: lookup_weather',
-      raw_message: { role: 'assistant', content: '', tool_calls: [
-        { id: 'call_weather_1', type: 'function', function: { name: 'lookup_weather', arguments: '{"city":"Berlin"}' } },
-      ] }, tool_names: ['lookup_weather'], source_message_index: 2 }),
-    msg({ id: 'msg-3', node_id: 'n3', parent: 'n2', children: [], origin: 'response', role: 'assistant', content: 'reply',
-      last_seen_at: '2024-01-01T00:00:00Z', repeat_count: 1, source_message_index: 2 }),
-  ];
-}

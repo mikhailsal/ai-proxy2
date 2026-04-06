@@ -27,17 +27,19 @@ function findHighlight(pathKey: string, rules: HighlightRule[]): HighlightRule |
 }
 
 export function JsonViewer({ data, depth = 0, path = [], collapsedPaths = [], expandedPaths = [], highlightRules = [] }: JsonViewerProps) {
+  const highlight = findHighlight(path.join('.'), highlightRules);
+
   if (data === null || data === undefined) {
-    return <span style={{ color: '#6e7681' }}>null</span>;
+    return <HighlightedValue highlight={highlight}><span style={{ color: '#6e7681' }}>null</span></HighlightedValue>;
   }
   if (typeof data === 'boolean') {
-    return <span style={{ color: '#79c0ff' }}>{String(data)}</span>;
+    return <HighlightedValue highlight={highlight}><span style={{ color: '#79c0ff' }}>{String(data)}</span></HighlightedValue>;
   }
   if (typeof data === 'number') {
-    return <span style={{ color: '#79c0ff' }}>{data}</span>;
+    return <HighlightedValue highlight={highlight}><span style={{ color: '#79c0ff' }}>{data}</span></HighlightedValue>;
   }
   if (typeof data === 'string') {
-    return <span style={{ color: '#a5d6ff' }}>"{data}"</span>;
+    return <HighlightedValue highlight={highlight}><span style={{ color: '#a5d6ff' }}>"{data}"</span></HighlightedValue>;
   }
   if (Array.isArray(data)) {
     return <ArrayNode data={data} depth={depth} path={path} collapsedPaths={collapsedPaths} expandedPaths={expandedPaths} highlightRules={highlightRules} />;
@@ -46,6 +48,21 @@ export function JsonViewer({ data, depth = 0, path = [], collapsedPaths = [], ex
     return <ObjectNode data={data as Record<string, unknown>} depth={depth} path={path} collapsedPaths={collapsedPaths} expandedPaths={expandedPaths} highlightRules={highlightRules} />;
   }
   return <span>{String(data)}</span>;
+}
+
+function HighlightedValue({ highlight, children }: { highlight: HighlightRule | null; children: React.ReactNode }) {
+  const wrapStyle: React.CSSProperties | undefined = highlight?.background
+    ? { background: highlight.background, borderRadius: 4, padding: '2px 4px', display: 'inline' }
+    : undefined;
+
+  if (!highlight?.label && !wrapStyle) return <>{children}</>;
+
+  return (
+    <span style={wrapStyle}>
+      {highlight?.label ? <span style={labelStyle}>{highlight.label}</span> : null}
+      {children}
+    </span>
+  );
 }
 
 interface CollapsibleShellProps {
