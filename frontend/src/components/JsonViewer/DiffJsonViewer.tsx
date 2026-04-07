@@ -4,41 +4,67 @@ interface DiffJsonViewerProps {
   left: unknown;
   right: unknown;
   depth?: number;
+  path?: string[];
+  collapsedPaths?: string[];
+  expandedPaths?: string[];
 }
 
-export function DiffJsonViewer({ left, right, depth = 0 }: DiffJsonViewerProps) {
+type Obj = Record<string, unknown>;
+
+type PathProps = {
+  path: string[];
+  collapsedPaths: string[];
+  expandedPaths: string[];
+};
+
+function isExpanded(pathKey: string, expandedPaths: string[]): boolean {
+  return expandedPaths.some(ep => pathKey === ep || pathKey.startsWith(ep + '.'));
+}
+
+function startsCollapsed(pathKey: string, collapsedPaths: string[], expandedPaths: string[]): boolean {
+  return !isExpanded(pathKey, expandedPaths) && collapsedPaths.includes(pathKey);
+}
+
+function shouldCollapseScalar(path: string[], collapsedPaths: string[], expandedPaths: string[]): boolean {
+  return path.length > 1 && startsCollapsed(path.join('.'), collapsedPaths, expandedPaths);
+}
+
+export function DiffJsonViewer({ left, right, depth = 0, path = [], collapsedPaths = [], expandedPaths = [] }: DiffJsonViewerProps) {
+  const pathProps = { path, collapsedPaths, expandedPaths };
+
   if (left === right) {
-    return <PlainValue value={right} depth={depth} />;
+    return <PlainValue value={right} depth={depth} {...pathProps} />;
   }
 
   if (left === undefined || left === null) {
-    return <Added value={right} depth={depth} />;
+    return <Added value={right} depth={depth} {...pathProps} />;
   }
   if (right === undefined || right === null) {
-    return <Removed value={left} depth={depth} />;
+    return <Removed value={left} depth={depth} {...pathProps} />;
   }
 
   const leftIsObj = isPlainObject(left);
   const rightIsObj = isPlainObject(right);
   if (leftIsObj && rightIsObj) {
-    return <DiffObjectNode left={left as Obj} right={right as Obj} depth={depth} />;
+    return <DiffObjectNode left={left as Obj} right={right as Obj} depth={depth} {...pathProps} />;
   }
 
   const leftIsArr = Array.isArray(left);
   const rightIsArr = Array.isArray(right);
   if (leftIsArr && rightIsArr) {
-    return <DiffArrayNode left={left} right={right} depth={depth} />;
+    return <DiffArrayNode left={left} right={right} depth={depth} {...pathProps} />;
   }
 
-  return <ChangedValue left={left} right={right} />;
+  return <ChangedValue left={left} right={right} {...pathProps} />;
 }
 
-type Obj = Record<string, unknown>;
-
-function DiffObjectNode({ left, right, depth }: { left: Obj; right: Obj; depth: number }) {
+function DiffObjectNode({ left, right, depth, path, collapsedPaths, expandedPaths }: { left: Obj; right: Obj; depth: number } & PathProps) {
   const allKeys = Array.from(new Set([...Object.keys(left), ...Object.keys(right)]));
   const hasChanges = allKeys.some(k => !deepEqual(left[k], right[k]));
-  const [collapsed, setCollapsed] = useState(hasChanges ? false : depth > 2);
+  const pathKey = path.join('.');
+  const [collapsed, setCollapsed] = useState(
+    isExpanded(pathKey, expandedPaths) ? false : startsCollapsed(pathKey, collapsedPaths, expandedPaths) || (!hasChanges && depth > 2),
+  );
 
   if (allKeys.length === 0) return <span style={{ color: '#8b949e' }}>{'{}'}</span>;
 
@@ -56,40 +82,9 @@ function DiffObjectNode({ left, right, depth }: { left: Obj; right: Obj; depth: 
         <span>
           {'{\n'}
           <span style={{ paddingLeft: '1.2em', display: 'block' }}>
-            {allKeys.map(k => {
-              const inLeft = k in left;
-              const inRight = k in right;
-
-              if (!inLeft) {
-                return (
-                  <span key={k} style={{ display: 'block', ...addedBg }}>
-                    <span style={{ color: '#ff7b72' }}>"{k}"</span>
-                    <span style={{ color: '#8b949e' }}>: </span>
-                    <PlainValue value={right[k]} depth={depth + 1} />
-                    <span style={{ color: '#8b949e' }}>,</span>
-                  </span>
-                );
-              }
-              if (!inRight) {
-                return (
-                  <span key={k} style={{ display: 'block', ...removedBg }}>
-                    <span style={{ color: '#ff7b72' }}>"{k}"</span>
-                    <span style={{ color: '#8b949e' }}>: </span>
-                    <PlainValue value={left[k]} depth={depth + 1} />
-                    <span style={{ color: '#8b949e' }}>,</span>
-                  </span>
-                );
-              }
-
-              return (
-                <span key={k} style={{ display: 'block' }}>
-                  <span style={{ color: '#ff7b72' }}>"{k}"</span>
-                  <span style={{ color: '#8b949e' }}>: </span>
-                  <DiffJsonViewer left={left[k]} right={right[k]} depth={depth + 1} />
-                  <span style={{ color: '#8b949e' }}>,</span>
-                </span>
-              );
-            })}
+            {allKeys.map(k => (
+              <DiffObjectRow key={k} fieldKey={k} left={left} right={right} depth={depth} path={path} collapsedPaths={collapsedPaths} expandedPaths={expandedPaths} />
+            ))}
           </span>
           {'}'}
         </span>
@@ -98,10 +93,55 @@ function DiffObjectNode({ left, right, depth }: { left: Obj; right: Obj; depth: 
   );
 }
 
-function DiffArrayNode({ left, right, depth }: { left: unknown[]; right: unknown[]; depth: number }) {
+function DiffObjectRow({ fieldKey, left, right, depth, path, collapsedPaths, expandedPaths }: {
+  fieldKey: string;
+  left: Obj;
+  right: Obj;
+  depth: number;
+} & PathProps) {
+  const childPath = [...path, fieldKey];
+  const inLeft = fieldKey in left;
+  const inRight = fieldKey in right;
+
+  if (!inLeft) {
+    return (
+      <span style={{ display: 'block', ...addedBg }}>
+        <span style={{ color: '#ff7b72' }}>&quot;{fieldKey}&quot;</span>
+        <span style={{ color: '#8b949e' }}>: </span>
+        <PlainValue value={right[fieldKey]} depth={depth + 1} path={childPath} collapsedPaths={collapsedPaths} expandedPaths={expandedPaths} />
+        <span style={{ color: '#8b949e' }}>,</span>
+      </span>
+    );
+  }
+
+  if (!inRight) {
+    return (
+      <span style={{ display: 'block', ...removedBg }}>
+        <span style={{ color: '#ff7b72' }}>&quot;{fieldKey}&quot;</span>
+        <span style={{ color: '#8b949e' }}>: </span>
+        <PlainValue value={left[fieldKey]} depth={depth + 1} path={childPath} collapsedPaths={collapsedPaths} expandedPaths={expandedPaths} />
+        <span style={{ color: '#8b949e' }}>,</span>
+      </span>
+    );
+  }
+
+  return (
+    <span style={{ display: 'block' }}>
+      <span style={{ color: '#ff7b72' }}>&quot;{fieldKey}&quot;</span>
+      <span style={{ color: '#8b949e' }}>: </span>
+      <DiffJsonViewer left={left[fieldKey]} right={right[fieldKey]} depth={depth + 1} path={childPath} collapsedPaths={collapsedPaths} expandedPaths={expandedPaths} />
+      <span style={{ color: '#8b949e' }}>,</span>
+    </span>
+  );
+}
+
+function DiffArrayNode({ left, right, depth, path, collapsedPaths, expandedPaths }: { left: unknown[]; right: unknown[]; depth: number } & PathProps) {
   const maxLen = Math.max(left.length, right.length);
   const hasChanges = left.length !== right.length || left.some((v, i) => !deepEqual(v, right[i]));
-  const [collapsed, setCollapsed] = useState(hasChanges ? false : depth > 2);
+  const pathKey = path.join('.');
+  const [collapsed, setCollapsed] = useState(
+    isExpanded(pathKey, expandedPaths) ? false : startsCollapsed(pathKey, collapsedPaths, expandedPaths) || (!hasChanges && depth > 2),
+  );
 
   if (maxLen === 0) return <span style={{ color: '#8b949e' }}>{'[]'}</span>;
 
@@ -120,13 +160,14 @@ function DiffArrayNode({ left, right, depth }: { left: unknown[]; right: unknown
           {'[\n'}
           <span style={{ paddingLeft: '1.2em', display: 'block' }}>
             {Array.from({ length: maxLen }, (_, i) => {
+              const childPath = [...path, String(i)];
               const inLeft = i < left.length;
               const inRight = i < right.length;
 
               if (!inLeft) {
                 return (
                   <span key={i} style={{ display: 'block', ...addedBg }}>
-                    <PlainValue value={right[i]} depth={depth + 1} />
+                    <PlainValue value={right[i]} depth={depth + 1} path={childPath} collapsedPaths={collapsedPaths} expandedPaths={expandedPaths} />
                     {i < maxLen - 1 && <span style={{ color: '#8b949e' }}>,</span>}
                   </span>
                 );
@@ -134,7 +175,7 @@ function DiffArrayNode({ left, right, depth }: { left: unknown[]; right: unknown
               if (!inRight) {
                 return (
                   <span key={i} style={{ display: 'block', ...removedBg }}>
-                    <PlainValue value={left[i]} depth={depth + 1} />
+                    <PlainValue value={left[i]} depth={depth + 1} path={childPath} collapsedPaths={collapsedPaths} expandedPaths={expandedPaths} />
                     {i < maxLen - 1 && <span style={{ color: '#8b949e' }}>,</span>}
                   </span>
                 );
@@ -142,7 +183,7 @@ function DiffArrayNode({ left, right, depth }: { left: unknown[]; right: unknown
 
               return (
                 <span key={i} style={{ display: 'block' }}>
-                  <DiffJsonViewer left={left[i]} right={right[i]} depth={depth + 1} />
+                  <DiffJsonViewer left={left[i]} right={right[i]} depth={depth + 1} path={childPath} collapsedPaths={collapsedPaths} expandedPaths={expandedPaths} />
                   {i < maxLen - 1 && <span style={{ color: '#8b949e' }}>,</span>}
                 </span>
               );
@@ -155,19 +196,32 @@ function DiffArrayNode({ left, right, depth }: { left: unknown[]; right: unknown
   );
 }
 
-function PlainValue({ value, depth = 0 }: { value: unknown; depth?: number }) {
-  if (value === null || value === undefined) return <span style={{ color: '#6e7681' }}>null</span>;
-  if (typeof value === 'boolean') return <span style={{ color: '#79c0ff' }}>{String(value)}</span>;
-  if (typeof value === 'number') return <span style={{ color: '#79c0ff' }}>{value}</span>;
-  if (typeof value === 'string') return <span style={{ color: '#a5d6ff' }}>"{value}"</span>;
-  if (Array.isArray(value)) return <CollapsiblePlainArray data={value} depth={depth} />;
-  if (isPlainObject(value)) return <CollapsiblePlainObject data={value as Obj} depth={depth} />;
+function PlainValue({ value, depth = 0, path, collapsedPaths, expandedPaths }: { value: unknown; depth?: number } & PathProps) {
+  const collapseScalar = shouldCollapseScalar(path, collapsedPaths, expandedPaths);
+
+  if (value === null || value === undefined) {
+    return collapseScalar ? <CollapsibleScalar summary="null"><span style={{ color: '#6e7681' }}>null</span></CollapsibleScalar> : <span style={{ color: '#6e7681' }}>null</span>;
+  }
+  if (typeof value === 'boolean') {
+    return collapseScalar ? <CollapsibleScalar summary="…"><span style={{ color: '#79c0ff' }}>{String(value)}</span></CollapsibleScalar> : <span style={{ color: '#79c0ff' }}>{String(value)}</span>;
+  }
+  if (typeof value === 'number') {
+    return collapseScalar ? <CollapsibleScalar summary="…"><span style={{ color: '#79c0ff' }}>{value}</span></CollapsibleScalar> : <span style={{ color: '#79c0ff' }}>{value}</span>;
+  }
+  if (typeof value === 'string') {
+    return collapseScalar ? <CollapsibleScalar summary={'"…"'}><span style={{ color: '#a5d6ff' }}>&quot;{value}&quot;</span></CollapsibleScalar> : <span style={{ color: '#a5d6ff' }}>&quot;{value}&quot;</span>;
+  }
+  if (Array.isArray(value)) return <CollapsiblePlainArray data={value} depth={depth} path={path} collapsedPaths={collapsedPaths} expandedPaths={expandedPaths} />;
+  if (isPlainObject(value)) return <CollapsiblePlainObject data={value as Obj} depth={depth} path={path} collapsedPaths={collapsedPaths} expandedPaths={expandedPaths} />;
   return <span>{String(value)}</span>;
 }
 
-function CollapsiblePlainObject({ data, depth }: { data: Obj; depth: number }) {
+function CollapsiblePlainObject({ data, depth, path, collapsedPaths, expandedPaths }: { data: Obj; depth: number } & PathProps) {
   const keys = Object.keys(data);
-  const [collapsed, setCollapsed] = useState(depth > 2);
+  const pathKey = path.join('.');
+  const [collapsed, setCollapsed] = useState(
+    isExpanded(pathKey, expandedPaths) ? false : startsCollapsed(pathKey, collapsedPaths, expandedPaths) || depth > 2,
+  );
   if (keys.length === 0) return <span style={{ color: '#8b949e' }}>{'{}'}</span>;
   return (
     <span>
@@ -182,9 +236,9 @@ function CollapsiblePlainObject({ data, depth }: { data: Obj; depth: number }) {
           <span style={{ paddingLeft: '1.2em', display: 'block' }}>
             {keys.map(k => (
               <span key={k} style={{ display: 'block' }}>
-                <span style={{ color: '#ff7b72' }}>"{k}"</span>
+                <span style={{ color: '#ff7b72' }}>&quot;{k}&quot;</span>
                 <span style={{ color: '#8b949e' }}>: </span>
-                <PlainValue value={data[k]} depth={depth + 1} />
+                <PlainValue value={data[k]} depth={depth + 1} path={[...path, k]} collapsedPaths={collapsedPaths} expandedPaths={expandedPaths} />
                 <span style={{ color: '#8b949e' }}>,</span>
               </span>
             ))}
@@ -196,8 +250,11 @@ function CollapsiblePlainObject({ data, depth }: { data: Obj; depth: number }) {
   );
 }
 
-function CollapsiblePlainArray({ data, depth }: { data: unknown[]; depth: number }) {
-  const [collapsed, setCollapsed] = useState(depth > 2);
+function CollapsiblePlainArray({ data, depth, path, collapsedPaths, expandedPaths }: { data: unknown[]; depth: number } & PathProps) {
+  const pathKey = path.join('.');
+  const [collapsed, setCollapsed] = useState(
+    isExpanded(pathKey, expandedPaths) ? false : startsCollapsed(pathKey, collapsedPaths, expandedPaths) || depth > 2,
+  );
   if (data.length === 0) return <span style={{ color: '#8b949e' }}>{'[]'}</span>;
   return (
     <span>
@@ -212,7 +269,7 @@ function CollapsiblePlainArray({ data, depth }: { data: unknown[]; depth: number
           <span style={{ paddingLeft: '1.2em', display: 'block' }}>
             {data.map((item, i) => (
               <span key={i} style={{ display: 'block' }}>
-                <PlainValue value={item} depth={depth + 1} />
+                <PlainValue value={item} depth={depth + 1} path={[...path, String(i)]} collapsedPaths={collapsedPaths} expandedPaths={expandedPaths} />
                 {i < data.length - 1 && <span style={{ color: '#8b949e' }}>,</span>}
               </span>
             ))}
@@ -224,28 +281,51 @@ function CollapsiblePlainArray({ data, depth }: { data: unknown[]; depth: number
   );
 }
 
-function Added({ value, depth }: { value: unknown; depth: number }) {
+function Added({ value, depth, path, collapsedPaths, expandedPaths }: { value: unknown; depth: number } & PathProps) {
   return (
     <span style={addedBg}>
-      <PlainValue value={value} depth={depth} />
+      <PlainValue value={value} depth={depth} path={path} collapsedPaths={collapsedPaths} expandedPaths={expandedPaths} />
     </span>
   );
 }
 
-function Removed({ value, depth }: { value: unknown; depth: number }) {
+function Removed({ value, depth, path, collapsedPaths, expandedPaths }: { value: unknown; depth: number } & PathProps) {
   return (
     <span style={removedBg}>
-      <PlainValue value={value} depth={depth} />
+      <PlainValue value={value} depth={depth} path={path} collapsedPaths={collapsedPaths} expandedPaths={expandedPaths} />
     </span>
   );
 }
 
-function ChangedValue({ left, right }: { left: unknown; right: unknown }) {
+function ChangedValue({ left, right, path, collapsedPaths, expandedPaths }: { left: unknown; right: unknown } & PathProps) {
+  if (shouldCollapseScalar(path, collapsedPaths, expandedPaths)) {
+    return (
+      <CollapsibleScalar summary="… (changed)">
+        <span style={removedInline}>{formatPrimitive(left)}</span>
+        <span style={{ color: '#8b949e' }}>{' → '}</span>
+        <span style={addedInline}>{formatPrimitive(right)}</span>
+      </CollapsibleScalar>
+    );
+  }
+
   return (
     <span>
       <span style={removedInline}>{formatPrimitive(left)}</span>
       <span style={{ color: '#8b949e' }}>{' → '}</span>
       <span style={addedInline}>{formatPrimitive(right)}</span>
+    </span>
+  );
+}
+
+function CollapsibleScalar({ summary, children }: { summary: string; children: React.ReactNode }) {
+  const [collapsed, setCollapsed] = useState(true);
+
+  return (
+    <span>
+      <button onClick={() => setCollapsed(value => !value)} style={collapseBtn} title={collapsed ? 'expand' : 'collapse'}>
+        {collapsed ? '▶' : '▼'}
+      </button>
+      {collapsed ? <span style={{ color: '#8b949e' }}>{summary}</span> : children}
     </span>
   );
 }

@@ -19,6 +19,14 @@ function isExpanded(pathKey: string, expandedPaths: string[]): boolean {
   return expandedPaths.some(ep => pathKey === ep || pathKey.startsWith(ep + '.'));
 }
 
+function startsCollapsed(pathKey: string, collapsedPaths: string[], expandedPaths: string[]): boolean {
+  return !isExpanded(pathKey, expandedPaths) && collapsedPaths.includes(pathKey);
+}
+
+function shouldCollapseScalar(path: string[], collapsedPaths: string[], expandedPaths: string[]): boolean {
+  return path.length > 1 && startsCollapsed(path.join('.'), collapsedPaths, expandedPaths);
+}
+
 function findHighlight(pathKey: string, rules: HighlightRule[]): HighlightRule | null {
   for (const rule of rules) {
     if (pathKey === rule.path) return rule;
@@ -27,19 +35,29 @@ function findHighlight(pathKey: string, rules: HighlightRule[]): HighlightRule |
 }
 
 export function JsonViewer({ data, depth = 0, path = [], collapsedPaths = [], expandedPaths = [], highlightRules = [] }: JsonViewerProps) {
-  const highlight = findHighlight(path.join('.'), highlightRules);
+  const pathKey = path.join('.');
+  const highlight = findHighlight(pathKey, highlightRules);
+  const collapseScalar = shouldCollapseScalar(path, collapsedPaths, expandedPaths);
 
   if (data === null || data === undefined) {
-    return <HighlightedValue highlight={highlight}><span style={{ color: '#6e7681' }}>null</span></HighlightedValue>;
+    return collapseScalar
+      ? <CollapsibleScalar highlight={highlight} summary="null"><span style={{ color: '#6e7681' }}>null</span></CollapsibleScalar>
+      : <HighlightedValue highlight={highlight}><span style={{ color: '#6e7681' }}>null</span></HighlightedValue>;
   }
   if (typeof data === 'boolean') {
-    return <HighlightedValue highlight={highlight}><span style={{ color: '#79c0ff' }}>{String(data)}</span></HighlightedValue>;
+    return collapseScalar
+      ? <CollapsibleScalar highlight={highlight} summary="…"><span style={{ color: '#79c0ff' }}>{String(data)}</span></CollapsibleScalar>
+      : <HighlightedValue highlight={highlight}><span style={{ color: '#79c0ff' }}>{String(data)}</span></HighlightedValue>;
   }
   if (typeof data === 'number') {
-    return <HighlightedValue highlight={highlight}><span style={{ color: '#79c0ff' }}>{data}</span></HighlightedValue>;
+    return collapseScalar
+      ? <CollapsibleScalar highlight={highlight} summary="…"><span style={{ color: '#79c0ff' }}>{data}</span></CollapsibleScalar>
+      : <HighlightedValue highlight={highlight}><span style={{ color: '#79c0ff' }}>{data}</span></HighlightedValue>;
   }
   if (typeof data === 'string') {
-    return <HighlightedValue highlight={highlight}><span style={{ color: '#a5d6ff' }}>"{data}"</span></HighlightedValue>;
+    return collapseScalar
+      ? <CollapsibleScalar highlight={highlight} summary={'"…"'}><span style={{ color: '#a5d6ff' }}>&quot;{data}&quot;</span></CollapsibleScalar>
+      : <HighlightedValue highlight={highlight}><span style={{ color: '#a5d6ff' }}>&quot;{data}&quot;</span></HighlightedValue>;
   }
   if (Array.isArray(data)) {
     return <ArrayNode data={data} depth={depth} path={path} collapsedPaths={collapsedPaths} expandedPaths={expandedPaths} highlightRules={highlightRules} />;
@@ -61,6 +79,30 @@ function HighlightedValue({ highlight, children }: { highlight: HighlightRule | 
     <span style={wrapStyle}>
       {highlight?.label ? <span style={labelStyle}>{highlight.label}</span> : null}
       {children}
+    </span>
+  );
+}
+
+function CollapsibleScalar({ highlight, summary, children }: { highlight: HighlightRule | null; summary: string; children: React.ReactNode }) {
+  const [collapsed, setCollapsed] = useState(true);
+  const wrapStyle: React.CSSProperties | undefined = highlight?.background
+    ? { background: highlight.background, borderRadius: 4, padding: '2px 4px', display: 'inline' }
+    : undefined;
+
+  return (
+    <span style={wrapStyle}>
+      {highlight?.label && collapsed ? <span style={labelStyle}>{highlight.label}</span> : null}
+      <button onClick={() => setCollapsed(value => !value)} style={collapseBtn} title={collapsed ? 'expand' : 'collapse'}>
+        {collapsed ? '▶' : '▼'}
+      </button>
+      {collapsed ? (
+        <span style={{ color: '#8b949e' }}>{summary}</span>
+      ) : (
+        <span>
+          {highlight?.label ? <span style={labelStyle}>{highlight.label}</span> : null}
+          {children}
+        </span>
+      )}
     </span>
   );
 }
@@ -108,7 +150,7 @@ function ObjectNode({ data, depth, path, collapsedPaths, expandedPaths, highligh
   const pathKey = path.join('.');
   const highlight = findHighlight(pathKey, highlightRules);
   const [collapsed, setCollapsed] = useState(
-    isExpanded(pathKey, expandedPaths) ? false : depth > 2 || collapsedPaths.includes(pathKey),
+    isExpanded(pathKey, expandedPaths) ? false : depth > 2 || startsCollapsed(pathKey, collapsedPaths, expandedPaths),
   );
   const keys = Object.keys(data);
   if (keys.length === 0) return <span style={{ color: '#8b949e' }}>{'{}'}</span>;
@@ -119,7 +161,7 @@ function ObjectNode({ data, depth, path, collapsedPaths, expandedPaths, highligh
       <span style={{ paddingLeft: '1.2em', display: 'block' }}>
         {keys.map(k => (
           <span key={k} style={{ display: 'block' }}>
-            <span style={{ color: '#ff7b72' }}>"{k}"</span>
+            <span style={{ color: '#ff7b72' }}>&quot;{k}&quot;</span>
             <span style={{ color: '#8b949e' }}>: </span>
             <JsonViewer data={data[k]} depth={depth + 1} path={[...path, k]} collapsedPaths={collapsedPaths} expandedPaths={expandedPaths} highlightRules={highlightRules} />
             <span style={{ color: '#8b949e' }}>,</span>
@@ -135,7 +177,7 @@ function ArrayNode({ data, depth, path, collapsedPaths, expandedPaths, highlight
   const pathKey = path.join('.');
   const highlight = findHighlight(pathKey, highlightRules);
   const [collapsed, setCollapsed] = useState(
-    isExpanded(pathKey, expandedPaths) ? false : depth > 2 || collapsedPaths.includes(pathKey),
+    isExpanded(pathKey, expandedPaths) ? false : depth > 2 || startsCollapsed(pathKey, collapsedPaths, expandedPaths),
   );
   if (data.length === 0) return <span style={{ color: '#8b949e' }}>{'[]'}</span>;
 

@@ -308,7 +308,7 @@ function DiffSection({
     }>
       <pre style={styles.pre}>
         {showDiff ? (
-          <DiffJsonViewer left={left} right={right} />
+          <DiffJsonViewer left={left} right={right} collapsedPaths={collapsedPaths} expandedPaths={expandedPaths} />
         ) : (
           <JsonViewer data={right} collapsedPaths={collapsedPaths} expandedPaths={expandedPaths} highlightRules={highlightRules} />
         )}

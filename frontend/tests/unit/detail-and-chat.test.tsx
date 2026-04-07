@@ -55,6 +55,7 @@ describe('JsonViewer', () => {
     await userEvent.click(screen.getByTitle('expand'));
     expect(screen.getByText('{ 2 keys }')).toBeInTheDocument();
   });
+
 });
 
 describe('DiffJsonViewer', () => {
@@ -303,6 +304,7 @@ describe('RequestDetail', () => {
     expect(screen.getByText('added by proxy')).toBeInTheDocument();
     expect(screen.getByText('"provider:mapped-model"')).toBeInTheDocument();
   });
+
 
   it('highlights ai_proxy_route when only a single response body is available', async () => {
     const detail = makeRequestDetail({
