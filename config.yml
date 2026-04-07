@@ -48,9 +48,8 @@ model_mappings:
   "google/gemini-3-pro-preview": "kilocode:google/gemini-3-pro-preview"
   "google/gemini-3.1-pro-preview": "kilocode:google/gemini-3.1-pro-preview"
   "google/gemini-3.1-flash-lite-preview": "kilocode:google/gemini-3.1-flash-lite-preview"
-
+  "google/gemma-3-27b-it": "kilocode:google/gemma-3-27b-it"
   "google/gemma-4-31b-it": "kilocode:google/gemma-4-31b-it"
-
   "google/gemma-4-26b-a4b-it": "kilocode:google/gemma-4-26b-a4b-it"
   # Meta
   "meta-llama/llama-4-scout": "kilocode:meta-llama/llama-4-scout"
@@ -68,6 +67,7 @@ model_mappings:
   "mistralai/mistral-small-2603": "kilocode:mistralai/mistral-small-2603"
   "mistralai/mistral-large-2512": "kilocode:mistralai/mistral-large-2512"
   # Z-AI
+  "z-ai/glm-5.1": "kilocode:z-ai/glm-5.1+z.ai"
   "z-ai/glm-5": "kilocode:z-ai/glm-5"
   "z-ai/glm-5-turbo": "kilocode:z-ai/glm-5-turbo"
   "z-ai/glm-4.5-air:free": "kilocode:z-ai/glm-4.5-air:free"
