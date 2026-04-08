@@ -131,6 +131,8 @@ describe('Request browser helpers', () => {
       makeRequestSummary({ id: 'a', model_requested: 'gpt-4o-mini', model_resolved: 'openai/gpt-4o-mini' }),
       makeRequestSummary({ id: 'b', model_requested: 'claude', model_resolved: null }),
     ];
+    const listRequests = vi.fn().mockResolvedValue({ items, next_cursor: 'cursor-1' });
+    const searchRequests = vi.fn().mockResolvedValue({ items: [items[1]] });
 
     useInfiniteQueryMock.mockImplementation(({ queryKey }) => {
       if (queryKey[0] === 'requests') {
@@ -152,12 +154,24 @@ describe('Request browser helpers', () => {
       } as never;
     });
 
-    const first = renderHook(() => useRequestBrowserData({ listRequests: vi.fn(), searchRequests: vi.fn() } as never, '', '4o'));
+    const first = renderHook(() => useRequestBrowserData({ listRequests, searchRequests } as never, '', '4o'));
     expect(first.result.current.items).toEqual([items[0]]);
     expect(filterRequests(items, '')).toEqual(items);
 
-    const second = renderHook(() => useRequestBrowserData({ listRequests: vi.fn(), searchRequests: vi.fn() } as never, 'claude', ''));
+    const requestsQueryOptions = useInfiniteQueryMock.mock.calls.find(([options]) => options.queryKey[0] === 'requests')?.[0];
+    expect(requestsQueryOptions).toBeTruthy();
+    void requestsQueryOptions?.queryFn({ pageParam: undefined });
+    expect(listRequests).toHaveBeenCalledWith({ cursor: undefined, limit: 50, model_query: '4o' });
+
+    useInfiniteQueryMock.mockClear();
+
+    const second = renderHook(() => useRequestBrowserData({ listRequests, searchRequests } as never, 'claude', ''));
     expect(second.result.current.items).toEqual([items[1]]);
+
+    const searchQueryOptions = useInfiniteQueryMock.mock.calls.find(([options]) => options.queryKey[0] === 'search')?.[0];
+    expect(searchQueryOptions).toBeTruthy();
+    void searchQueryOptions?.queryFn();
+    expect(searchRequests).toHaveBeenCalledWith('claude');
   });
 });
 

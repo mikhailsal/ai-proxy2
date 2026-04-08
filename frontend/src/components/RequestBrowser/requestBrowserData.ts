@@ -17,11 +17,16 @@ export function useRequestBrowserData(
   modelFilter: string,
 ): UseRequestBrowserDataResult {
   const { refetchInterval } = useAutoRefresh();
+  const normalizedModelFilter = modelFilter.trim();
 
   const requestsQuery = useInfiniteQuery({
-    queryKey: ['requests'],
+    queryKey: ['requests', normalizedModelFilter],
     queryFn: ({ pageParam }: { pageParam: string | undefined }) =>
-      api.listRequests({ cursor: pageParam, limit: 50 }),
+      api.listRequests({
+        cursor: pageParam,
+        limit: 50,
+        model_query: normalizedModelFilter || undefined,
+      }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: last => last.next_cursor ?? undefined,
     refetchInterval,
@@ -42,9 +47,9 @@ export function useRequestBrowserData(
 
   return {
     fetchNextPage: requestsQuery.fetchNextPage,
-    hasNextPage: requestsQuery.hasNextPage ?? false,
-    isFetchingNextPage: requestsQuery.isFetchingNextPage,
-    isLoading: requestsQuery.isLoading,
+    hasNextPage: searchQuery ? false : (requestsQuery.hasNextPage ?? false),
+    isFetchingNextPage: searchQuery ? false : requestsQuery.isFetchingNextPage,
+    isLoading: searchQuery ? searchResultsQuery.isLoading : requestsQuery.isLoading,
     items: filterRequests(baseItems, modelFilter),
   };
 }

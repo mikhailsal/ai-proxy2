@@ -152,6 +152,71 @@ function computeTps(request: RequestSummary | RequestDetailType | null): string 
   return tps < 10 ? tps.toFixed(1) : Math.round(tps).toString();
 }
 
+function resolveDisplayedCost(request: RequestSummary | RequestDetailType | null): number | null {
+  if (!request) return null;
+
+  const responseBody = 'response_body' in request ? request.response_body : null;
+  const clientResponseBody = 'client_response_body' in request ? request.client_response_body : null;
+  const body = readCostContainer(clientResponseBody) ?? readCostContainer(responseBody);
+  if (!body) return request.cost;
+
+  const containers = [body.usage, body.usageCostDetails, body.root, body.rootCostDetails];
+  const baseCost = firstNumericValue(containers, ['cost', 'router_cost']);
+  const inferenceCost = firstNumericValue(containers, ['upstream_inference_cost', 'inference_cost', 'market_cost']);
+
+  if (baseCost === null && inferenceCost === null) {
+    return request.cost;
+  }
+  return (baseCost ?? 0) + (inferenceCost ?? 0);
+}
+
+function readCostContainer(body: unknown): {
+  root: Record<string, unknown>;
+  usage: Record<string, unknown> | null;
+  rootCostDetails: Record<string, unknown> | null;
+  usageCostDetails: Record<string, unknown> | null;
+} | null {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return null;
+  }
+
+  const root = body as Record<string, unknown>;
+  const usage = isRecord(root.usage) ? root.usage : null;
+  return {
+    root,
+    usage,
+    rootCostDetails: isRecord(root.cost_details) ? root.cost_details : null,
+    usageCostDetails: usage && isRecord(usage.cost_details) ? usage.cost_details : null,
+  };
+}
+
+function firstNumericValue(
+  containers: Array<Record<string, unknown> | null>,
+  keys: string[],
+): number | null {
+  for (const container of containers) {
+    if (!container) continue;
+    for (const key of keys) {
+      const value = parseNumericValue(container[key]);
+      if (value !== null) return value;
+    }
+  }
+  return null;
+}
+
+function parseNumericValue(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = Number(value.trim());
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
 function RequestDetailMetaRow({
   request,
 }: {
@@ -165,6 +230,7 @@ function RequestDetailMetaRow({
 
   const tpsVal = computeTps(request);
   const summary = request as RequestSummary | null;
+  const displayCost = resolveDisplayedCost(request);
 
   return (
     <div style={styles.metaRow}>
@@ -174,7 +240,7 @@ function RequestDetailMetaRow({
       <MetaBadge label="Out" value={String(request?.output_tokens ?? '-')} />
       <MetaBadge label="Total" value={String(request?.total_tokens ?? '-')} />
       {cachedDisplay ? <MetaBadge label="Cached" value={cachedDisplay} valueColor={summary ? cacheRatioColor(summary) : undefined} highlight /> : null}
-      {request?.cost != null ? <MetaBadge label="Cost" value={`$${request.cost.toFixed(6)}`} valueColor={costColor(request.cost)} /> : null}
+      {displayCost != null ? <MetaBadge label="Cost" value={`$${displayCost.toFixed(6)}`} valueColor={costColor(displayCost)} /> : null}
       {request?.cache_status ? <MetaBadge label="Cache" value={request.cache_status} /> : null}
       {request?.message_count != null ? <MetaBadge label="Messages" value={String(request.message_count)} valueColor={messageCountColor(request.message_count)} /> : null}
       <MetaBadge label="Time" value={request ? new Date(request.timestamp).toLocaleString() : '-'} />

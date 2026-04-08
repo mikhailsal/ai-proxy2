@@ -111,6 +111,7 @@ export function RequestBrowserList({
           fetchNextPage={fetchNextPage}
           hasNextPage={hasNextPage}
           isFetchingNextPage={isFetchingNextPage}
+          isLoading={isLoading}
           items={items}
           onSelect={onSelect}
           searchQuery={searchQuery}

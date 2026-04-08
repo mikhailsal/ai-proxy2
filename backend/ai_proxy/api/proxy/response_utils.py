@@ -44,14 +44,53 @@ def extract_usage(response_body: Any) -> tuple[int | None, int | None, int | Non
 def extract_cost(response_body: Any) -> float | None:
     if not isinstance(response_body, dict):
         return None
-    usage = response_body.get("usage")
-    if isinstance(usage, dict):
-        cost = usage.get("cost")
-        if isinstance(cost, int | float):
-            return float(cost)
-    cost = response_body.get("cost")
-    if isinstance(cost, int | float):
-        return float(cost)
+
+    usage = response_body.get("usage") if isinstance(response_body.get("usage"), dict) else None
+    usage_cost_details = (
+        usage.get("cost_details") if isinstance(usage, dict) and isinstance(usage.get("cost_details"), dict) else None
+    )
+    body_cost_details = (
+        response_body.get("cost_details") if isinstance(response_body.get("cost_details"), dict) else None
+    )
+    containers = (usage, usage_cost_details, response_body, body_cost_details)
+
+    base_cost = _first_numeric_value(containers, "cost", "router_cost")
+    inference_cost = _first_numeric_value(
+        containers,
+        "upstream_inference_cost",
+        "inference_cost",
+        "market_cost",
+    )
+
+    if base_cost is None and inference_cost is None:
+        return None
+    return (base_cost or 0.0) + (inference_cost or 0.0)
+
+
+def _first_numeric_value(containers: tuple[dict[str, Any] | None, ...], *keys: str) -> float | None:
+    for container in containers:
+        if not isinstance(container, dict):
+            continue
+        for key in keys:
+            parsed = _parse_cost_value(container.get(key))
+            if parsed is not None:
+                return parsed
+    return None
+
+
+def _parse_cost_value(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int | float):
+        return float(value)
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        try:
+            return float(stripped)
+        except ValueError:
+            return None
     return None
 
 

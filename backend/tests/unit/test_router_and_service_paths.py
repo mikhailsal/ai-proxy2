@@ -221,7 +221,7 @@ async def test_ai_proxy_route_can_be_disabled(monkeypatch: pytest.MonkeyPatch) -
 
 
 @pytest.mark.asyncio
-async def test_list_models_and_transport_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_list_models_route(monkeypatch: pytest.MonkeyPatch) -> None:
     app = create_app()
     transport = ASGITransport(app=app)
     monkeypatch.setattr(proxy_router, "validate_proxy_api_key", lambda key, **kw: (bool(key), "hash", True))
@@ -265,6 +265,9 @@ async def test_list_models_and_transport_helpers(monkeypatch: pytest.MonkeyPatch
             }
         ],
     }
+
+
+def test_transport_and_cost_helpers() -> None:
     assert proxy_router._extract_api_key(SimpleNamespace(headers={"Authorization": "Basic nope"})) is None
     assert proxy_router._transport_error_status(httpx.TimeoutException("boom")) == 504
     connect_error = httpx.ConnectError("boom", request=httpx.Request("GET", "https://example.com"))
@@ -279,7 +282,21 @@ async def test_list_models_and_transport_helpers(monkeypatch: pytest.MonkeyPatch
     assert response_utils.extract_cost(None) is None
     assert response_utils.extract_cost({}) is None
     assert response_utils.extract_cost({"usage": {"cost": 0.0025}}) == 0.0025
+    assert response_utils.extract_cost({"usage": {"cost": 0.0025, "upstream_inference_cost": 0.01}}) == 0.0125
+    assert (
+        response_utils.extract_cost(
+            {
+                "usage": {
+                    "cost": 0.000069125,
+                    "cost_details": {"upstream_inference_cost": 0.0013825},
+                }
+            }
+        )
+        == 0.001451625
+    )
     assert response_utils.extract_cost({"cost": 0.01}) == 0.01
+    assert response_utils.extract_cost({"market_cost": "0.25"}) == 0.25
+    assert response_utils.extract_cost({"usage": {"cost": "0"}, "market_cost": 0.25}) == 0.25
     assert response_utils.extract_cost({"usage": {"cost": "not-a-number"}}) is None
 
 

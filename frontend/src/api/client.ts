@@ -34,6 +34,7 @@ export interface ApiClient {
     cursor?: string;
     limit?: number;
     model?: string;
+    model_query?: string;
     client_hash?: string;
     since?: string;
     until?: string;
@@ -92,6 +93,7 @@ class BrowserApiClient implements ApiClient {
     cursor?: string;
     limit?: number;
     model?: string;
+    model_query?: string;
     client_hash?: string;
     since?: string;
     until?: string;
@@ -198,6 +200,7 @@ function buildRequestsPath(params: {
   cursor?: string;
   limit?: number;
   model?: string;
+  model_query?: string;
   client_hash?: string;
   since?: string;
   until?: string;

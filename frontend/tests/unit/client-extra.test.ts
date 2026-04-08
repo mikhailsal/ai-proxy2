@@ -34,7 +34,15 @@ describe('BrowserApiClient', () => {
 
     await expect(client.getStats()).resolves.toMatchObject({ total_requests: 1 });
     await expect(
-      client.listRequests({ cursor: 'abc', limit: 10, model: 'gpt', client_hash: 'hash', since: 'yesterday', until: 'today' }),
+      client.listRequests({
+        cursor: 'abc',
+        limit: 10,
+        model: 'gpt',
+        model_query: 'gemini',
+        client_hash: 'hash',
+        since: 'yesterday',
+        until: 'today',
+      }),
     ).resolves.toEqual({ items: [], next_cursor: 'cursor-1' });
     await expect(client.getRequest('req-1')).resolves.toEqual({ id: 'req-1' });
     await expect(client.searchRequests('hello', 5)).resolves.toEqual({ items: [{ id: 'req-1' }] });
@@ -43,7 +51,7 @@ describe('BrowserApiClient', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(1, 'http://localhost:8000/ui/v1/stats', withAuth('secret'));
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      'http://localhost:8000/ui/v1/requests?cursor=abc&limit=10&model=gpt&client_hash=hash&since=yesterday&until=today',
+      'http://localhost:8000/ui/v1/requests?cursor=abc&limit=10&model=gpt&model_query=gemini&client_hash=hash&since=yesterday&until=today',
       withAuth('secret'),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(3, 'http://localhost:8000/ui/v1/requests/req-1', withAuth('secret'));

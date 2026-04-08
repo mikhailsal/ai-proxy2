@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ai_proxy.api.deps import get_session, require_ui_auth
+from ai_proxy.api.proxy import response_utils
 from ai_proxy.db.models import ProxyRequest
 from ai_proxy.db.repositories import requests as req_repo
 
@@ -18,6 +19,7 @@ SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
 
 def _serialize_request(req: ProxyRequest) -> dict[str, Any]:
+    normalized_cost = _extract_cost(req)
     return {
         "id": str(req.id),
         "timestamp": req.timestamp.isoformat() if req.timestamp else None,
@@ -33,7 +35,7 @@ def _serialize_request(req: ProxyRequest) -> dict[str, Any]:
         "output_tokens": req.output_tokens,
         "total_tokens": req.total_tokens,
         "cached_input_tokens": _extract_cached_tokens(req),
-        "cost": req.cost if req.cost is not None else _extract_cost(req),
+        "cost": normalized_cost if normalized_cost is not None else req.cost,
         "cache_status": req.cache_status,
         "error_message": req.error_message,
         "message_count": _extract_message_count(req),
@@ -59,17 +61,7 @@ def _extract_cached_tokens(req: ProxyRequest) -> int | None:
 
 def _extract_cost(req: ProxyRequest) -> float | None:
     body = req.response_body or req.client_response_body
-    if not isinstance(body, dict):
-        return None
-    usage = body.get("usage")
-    if isinstance(usage, dict):
-        cost = usage.get("cost")
-        if isinstance(cost, int | float):
-            return float(cost)
-    cost = body.get("cost")
-    if isinstance(cost, int | float):
-        return float(cost)
-    return None
+    return response_utils.extract_cost(body)
 
 
 def _extract_message_count(req: ProxyRequest) -> int | None:
@@ -199,6 +191,7 @@ async def list_requests(
     cursor: str | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
     model: str | None = Query(None),
+    model_query: str | None = Query(None),
     client_hash: str | None = Query(None),
     status_code: int | None = Query(None),
     since: str | None = Query(None),
@@ -213,6 +206,7 @@ async def list_requests(
         cursor=cursor_dt,
         limit=limit,
         model=model,
+        model_query=model_query,
         client_hash=client_hash,
         status_code=status_code,
         since=since_dt,

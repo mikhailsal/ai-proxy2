@@ -257,6 +257,32 @@ describe('RequestDetail', () => {
     expect(screen.queryByText('→')).not.toBeInTheDocument();
   });
 
+  it('prefers effective BYOK cost derived from nested cost details in detail view', async () => {
+    const detail = makeRequestDetail({
+      cost: 0.000069125,
+      response_body: {
+        usage: {
+          cost: 0.000069125,
+          cost_details: {
+            upstream_inference_cost: 0.0013825,
+          },
+        },
+        choices: [{ message: { role: 'assistant', content: 'priced' } }],
+      },
+    });
+    const api = {
+      downloadExport: vi.fn().mockResolvedValue(undefined),
+      getRequest: vi.fn().mockResolvedValue(detail),
+    };
+
+    renderWithApi(
+      <RequestDetail onClose={vi.fn()} requestId="req-cost" requestSummary={makeRequestSummary({ cost: 0.000069125 })} />,
+      api,
+    );
+
+    await waitFor(() => expect(screen.getByText('$0.001452')).toBeInTheDocument());
+  });
+
   it('shows header diff view when headers differ between client and provider', async () => {
     const detail = makeRequestDetail({
       client_request_headers: { authorization: 'Bearer sk-***', 'content-type': 'application/json' },

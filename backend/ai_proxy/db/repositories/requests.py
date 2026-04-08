@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import delete as sql_delete
-from sqlalchemy import desc, func, select
+from sqlalchemy import desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ai_proxy.db.models import Provider, ProxyRequest
@@ -30,6 +30,7 @@ async def list_requests(
     cursor: datetime | None = None,
     limit: int = 50,
     model: str | None = None,
+    model_query: str | None = None,
     client_hash: str | None = None,
     status_code: int | None = None,
     provider_name: str | None = None,
@@ -42,6 +43,8 @@ async def list_requests(
         query = query.where(ProxyRequest.timestamp < cursor)
     if model:
         query = query.where(ProxyRequest.model_requested == model)
+    if model_query:
+        query = query.where(_model_match_clause(model_query))
     if client_hash:
         query = query.where(ProxyRequest.client_api_key_hash == client_hash)
     if status_code:
@@ -63,15 +66,32 @@ async def search_requests(
     query_text: str,
     limit: int = 50,
 ) -> list[ProxyRequest]:
-    ts_query = func.plainto_tsquery("english", query_text)
+    normalized_query = query_text.strip()
+    if not normalized_query:
+        return []
+
+    ts_query = func.plainto_tsquery("english", normalized_query)
     query = (
         select(ProxyRequest)
-        .where(ProxyRequest.search_vector.op("@@")(ts_query))
+        .where(
+            or_(
+                ProxyRequest.search_vector.op("@@")(ts_query),
+                _model_match_clause(normalized_query),
+            )
+        )
         .order_by(desc(ProxyRequest.timestamp))
         .limit(limit)
     )
     result = await session.execute(query)
     return list(result.scalars().all())
+
+
+def _model_match_clause(query_text: str):
+    pattern = f"%{query_text}%"
+    return or_(
+        ProxyRequest.model_requested.ilike(pattern),
+        ProxyRequest.model_resolved.ilike(pattern),
+    )
 
 
 async def get_request_count(session: AsyncSession) -> int:

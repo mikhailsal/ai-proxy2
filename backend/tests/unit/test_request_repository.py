@@ -101,6 +101,7 @@ async def test_list_requests_and_search_requests_apply_filters() -> None:
         cursor=cursor,
         limit=10,
         model="gpt-4o-mini",
+        model_query="4o",
         client_hash="client-hash",
         status_code=200,
         since=since,
@@ -115,12 +116,16 @@ async def test_list_requests_and_search_requests_apply_filters() -> None:
     search_query = str(session.queries[1])
     assert "proxy_requests.timestamp <" in list_query
     assert "proxy_requests.model_requested =" in list_query
+    assert "lower(proxy_requests.model_requested) LIKE lower(" in list_query
+    assert "lower(proxy_requests.model_resolved) LIKE lower(" in list_query
     assert "proxy_requests.client_api_key_hash =" in list_query
     assert "proxy_requests.response_status_code =" in list_query
     assert "proxy_requests.timestamp >=" in list_query
     assert "proxy_requests.timestamp <=" in list_query
     assert "LIMIT" in list_query
     assert "plainto_tsquery" in search_query.lower() or "@@" in search_query
+    assert "lower(proxy_requests.model_requested) LIKE lower(" in search_query
+    assert "lower(proxy_requests.model_resolved) LIKE lower(" in search_query
 
 
 @pytest.mark.asyncio
