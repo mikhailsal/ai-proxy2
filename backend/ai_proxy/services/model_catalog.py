@@ -22,6 +22,7 @@ if TYPE_CHECKING:
 logger = structlog.get_logger()
 
 _PROVIDER_MODELS_TTL_SECONDS = 300.0
+_NVIDIA_MIN_REASONABLE_CREATED = 946684800
 
 
 @dataclass(frozen=True)
@@ -63,6 +64,14 @@ def serialize_catalog_model(entry: CatalogModel) -> JsonObject:
     payload.setdefault("object", "model")
     payload.setdefault("owned_by", entry.provider_name)
     return payload
+
+
+def _normalize_provider_model(provider_name: str, model_payload: JsonObject) -> JsonObject:
+    normalized = dict(model_payload)
+    created = normalized.get("created")
+    if provider_name == "nvidia" and isinstance(created, int) and created < _NVIDIA_MIN_REASONABLE_CREATED:
+        normalized.pop("created", None)
+    return normalized
 
 
 async def get_proxy_model_catalog(
@@ -180,7 +189,7 @@ async def _get_cached_provider_models(
             if not isinstance(model_id, str) or not model_id:
                 continue
 
-            model_payload = dict(model)
+            model_payload = _normalize_provider_model(provider_name, model)
             sanitized_models.append(model_payload)
             models_by_id[model_id] = model_payload
 

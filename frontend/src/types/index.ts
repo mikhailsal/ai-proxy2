@@ -95,6 +95,15 @@ export interface ProxyModelPricing {
   [key: string]: string | number | null | undefined;
 }
 
+export interface ProxyModelArchitecture {
+  input_modalities?: string[] | null;
+  output_modalities?: string[] | null;
+  tokenizer?: string | null;
+  modality?: string | string[] | null;
+  instruct_type?: string | null;
+  [key: string]: unknown;
+}
+
 export interface ProxyModel {
   id: string;
   provider: string;
@@ -107,6 +116,9 @@ export interface ProxyModel {
   description?: string | null;
   context_length?: number | null;
   pricing?: ProxyModelPricing | null;
+  architecture?: ProxyModelArchitecture | null;
+  supported_parameters?: string[] | null;
+  per_request_limits?: Record<string, unknown> | null;
   [key: string]: unknown;
 }
 

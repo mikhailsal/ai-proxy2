@@ -2,11 +2,17 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  formatList,
   formatContextLength,
   formatCreated,
   formatPricePerMillion,
+  getInputModalities,
   getInputPrice,
   getOutputPrice,
+  getOutputModalities,
+  getPinnedProviders,
+  getSupportedParameters,
+  getTokenizer,
   modelMatchesSearch,
   parsePrice,
   sortModels,
@@ -44,6 +50,13 @@ function makeModelWithPricing(): ProxyModel {
     created: 1714521600,
     name: 'Claude 3 Haiku',
     description: 'Fast model',
+    architecture: {
+      input_modalities: ['text'],
+      output_modalities: ['text'],
+      tokenizer: 'cl100k_base',
+    },
+    supported_parameters: ['temperature', 'top_p', 'tools'],
+    pinned_providers: ['anthropic'],
   });
 }
 
@@ -148,6 +161,23 @@ describe('getInputPrice / getOutputPrice', () => {
   });
 });
 
+describe('model metadata helpers', () => {
+  it('reads modalities, tokenizer, parameters, and pinned providers', () => {
+    const model = makeModelWithPricing();
+
+    expect(getInputModalities(model)).toEqual(['text']);
+    expect(getOutputModalities(model)).toEqual(['text']);
+    expect(getTokenizer(model)).toBe('cl100k_base');
+    expect(getSupportedParameters(model)).toEqual(['temperature', 'top_p', 'tools']);
+    expect(getPinnedProviders(model)).toEqual(['anthropic']);
+  });
+
+  it('formats metadata lists and request limits', () => {
+    expect(formatList(['text', 'image'])).toBe('text, image');
+    expect(formatList([])).toBe('—');
+  });
+});
+
 describe('modelMatchesSearch', () => {
   it('returns true for empty query', () => {
     expect(modelMatchesSearch(makeModel(), '')).toBe(true);
@@ -168,6 +198,18 @@ describe('modelMatchesSearch', () => {
     const m = makeModel({ name: 'Claude 3 Haiku', description: 'Fast small model' });
     expect(modelMatchesSearch(m, 'haiku')).toBe(true);
     expect(modelMatchesSearch(m, 'small model')).toBe(true);
+  });
+
+  it('matches added metadata columns', () => {
+    const m = makeModel({
+      architecture: { input_modalities: ['text', 'image'], output_modalities: ['text'], tokenizer: 'o200k' },
+      supported_parameters: ['temperature', 'tools'],
+      pinned_providers: ['openai'],
+    });
+
+    expect(modelMatchesSearch(m, 'image')).toBe(true);
+    expect(modelMatchesSearch(m, 'tools')).toBe(true);
+    expect(modelMatchesSearch(m, 'o200k')).toBe(true);
   });
 
   it('is case-insensitive', () => {
@@ -256,6 +298,15 @@ describe('ModelsWorkspace component', () => {
     expect(screen.getByText('openrouter')).toBeInTheDocument();
     expect(screen.getByText('200K')).toBeInTheDocument();
     expect(screen.getByText(/2024/)).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: /Input Modalities/ })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: /Output Modalities/ })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: /Tokenizer/ })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: /Supported Parameters/ })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: /Pinned Providers/ })).toBeInTheDocument();
+    expect(screen.getAllByText('text').length).toBeGreaterThan(0);
+    expect(screen.getByText('cl100k_base')).toBeInTheDocument();
+    expect(screen.getByText('temperature, top_p, tools')).toBeInTheDocument();
+    expect(screen.getByText('anthropic')).toBeInTheDocument();
   });
 
   it('filters models by search query', async () => {
@@ -335,19 +386,19 @@ describe('ModelsWorkspace component', () => {
 
     const firstRowText = () => screen.getAllByRole('row')[1].textContent ?? '';
 
-    await userEvent.click(screen.getByRole('columnheader', { name: /Provider/ }));
+    await userEvent.click(screen.getByRole('columnheader', { name: /^Provider/ }));
     await waitFor(() => expect(firstRowText()).toContain('m2'));
 
-    await userEvent.click(screen.getByRole('columnheader', { name: /Context/ }));
+    await userEvent.click(screen.getByRole('columnheader', { name: /^Context/ }));
     await waitFor(() => expect(firstRowText()).toContain('m1'));
 
-    await userEvent.click(screen.getByRole('columnheader', { name: /Input/ }));
+    await userEvent.click(screen.getByRole('columnheader', { name: /^Input \$\/1M/ }));
     await waitFor(() => expect(firstRowText()).toContain('m2'));
 
-    await userEvent.click(screen.getByRole('columnheader', { name: /Output/ }));
+    await userEvent.click(screen.getByRole('columnheader', { name: /^Output \$\/1M/ }));
     await waitFor(() => expect(firstRowText()).toContain('m2'));
 
-    await userEvent.click(screen.getByRole('columnheader', { name: /Released/ }));
+    await userEvent.click(screen.getByRole('columnheader', { name: /^Released/ }));
     await waitFor(() => expect(firstRowText()).toContain('m1'));
   });
 

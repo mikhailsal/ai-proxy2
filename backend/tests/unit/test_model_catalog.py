@@ -136,3 +136,21 @@ def test_serialize_catalog_model_preserves_upstream_metadata() -> None:
         "owned_by": "kilocode",
         "pricing": {"prompt": 1},
     }
+
+
+@pytest.mark.asyncio
+async def test_nvidia_catalog_drops_legacy_created_timestamps() -> None:
+    invalidate_model_catalog()
+    config = AppConfig(
+        providers={"nvidia": ProviderConfig(endpoint="https://nvidia.example")},
+        model_mappings={"nvidia/test-model": "nvidia:nvidia/test-model"},
+    )
+    adapter = CountingAdapter(
+        [
+            {"id": "nvidia/test-model", "created": 735790403, "owned_by": "nvidia"},
+        ]
+    )
+
+    catalog = await get_proxy_model_catalog(config=config, registry={"nvidia": adapter})
+
+    assert catalog["nvidia/test-model"].metadata == {"id": "nvidia/test-model", "owned_by": "nvidia"}

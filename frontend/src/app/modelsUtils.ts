@@ -35,6 +35,63 @@ export function formatCreated(value: number | null | undefined): string {
   });
 }
 
+function readStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0);
+}
+
+function readArchitecture(model: ProxyModel): Record<string, unknown> | null {
+  if (!model.architecture || typeof model.architecture !== 'object') {
+    return null;
+  }
+  return model.architecture as Record<string, unknown>;
+}
+
+export function getInputModalities(model: ProxyModel): string[] {
+  const architecture = readArchitecture(model);
+  if (!architecture) return [];
+
+  const fromInput = readStringArray(architecture.input_modalities);
+  if (fromInput.length > 0) return fromInput;
+
+  const fallback = architecture.modality;
+  if (typeof fallback === 'string' && fallback.length > 0) return [fallback];
+  return readStringArray(fallback);
+}
+
+export function getOutputModalities(model: ProxyModel): string[] {
+  const architecture = readArchitecture(model);
+  if (!architecture) return [];
+
+  const fromOutput = readStringArray(architecture.output_modalities);
+  if (fromOutput.length > 0) return fromOutput;
+
+  const fallback = architecture.modality;
+  if (typeof fallback === 'string' && fallback.length > 0) return [fallback];
+  return readStringArray(fallback);
+}
+
+export function getTokenizer(model: ProxyModel): string | null {
+  const architecture = readArchitecture(model);
+  if (!architecture) return null;
+  return typeof architecture.tokenizer === 'string' && architecture.tokenizer.length > 0
+    ? architecture.tokenizer
+    : null;
+}
+
+export function getSupportedParameters(model: ProxyModel): string[] {
+  return readStringArray(model.supported_parameters);
+}
+
+export function getPinnedProviders(model: ProxyModel): string[] {
+  return readStringArray(model.pinned_providers);
+}
+
+export function formatList(values: string[] | null | undefined): string {
+  if (!values || values.length === 0) return '—';
+  return values.join(', ');
+}
+
 export function getInputPrice(model: ProxyModel): number | null {
   const p = model.pricing;
   if (!p) return null;
@@ -50,11 +107,23 @@ export function getOutputPrice(model: ProxyModel): number | null {
 export function modelMatchesSearch(model: ProxyModel, query: string): boolean {
   if (!query) return true;
   const q = query.toLowerCase();
+  const searchBlob = [
+    model.id,
+    model.provider,
+    model.mapped_model,
+    model.name ?? '',
+    model.description ?? '',
+    formatList(getInputModalities(model)),
+    formatList(getOutputModalities(model)),
+    getTokenizer(model) ?? '',
+    formatList(getSupportedParameters(model)),
+    formatList(getPinnedProviders(model)),
+  ]
+    .join(' ')
+    .toLowerCase();
+
   return (
-    model.id.toLowerCase().includes(q) ||
-    model.provider.toLowerCase().includes(q) ||
-    (model.name ?? '').toLowerCase().includes(q) ||
-    (model.description ?? '').toLowerCase().includes(q)
+    searchBlob.includes(q)
   );
 }
 
