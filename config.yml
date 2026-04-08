@@ -67,7 +67,7 @@ model_mappings:
   "mistralai/mistral-small-2603": "kilocode:mistralai/mistral-small-2603"
   "mistralai/mistral-large-2512": "kilocode:mistralai/mistral-large-2512"
   # Z-AI
-  "z-ai/glm-5.1": "kilocode:z-ai/glm-5.1+z.ai"
+  "z-ai/glm-5.1": "kilocode:z-ai/*+z.ai"
   "z-ai/glm-5": "kilocode:z-ai/glm-5"
   "z-ai/glm-5-turbo": "kilocode:z-ai/glm-5-turbo"
   "z-ai/glm-4.5-air:free": "kilocode:z-ai/glm-4.5-air:free"

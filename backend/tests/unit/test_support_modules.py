@@ -201,7 +201,8 @@ def test_access_rules_and_modifications(monkeypatch: pytest.MonkeyPatch) -> None
     assert body == {"stream": False, "temperature": "0.1"}
 
 
-def test_registry_and_routing(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.asyncio
+async def test_registry_and_routing(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PRIMARY_API_KEY", "secret-key")
     config = AppConfig(
         providers={
@@ -229,8 +230,8 @@ def test_registry_and_routing(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(routing, "get_app_config", lambda: config)
     monkeypatch.setattr(routing, "get_adapter_registry", lambda: registry)
 
-    exact = resolve_model("gpt-4o-mini")
-    wildcard = resolve_model("gpt-4o")
+    exact = await resolve_model("gpt-4o-mini")
+    wildcard = await resolve_model("gpt-4o")
 
     assert exact.provider_name == "primary"
     assert exact.mapped_model == "mapped-model"
@@ -240,7 +241,7 @@ def test_registry_and_routing(monkeypatch: pytest.MonkeyPatch) -> None:
     assert wildcard.route_label == "secondary:gpt-4o"
 
     with pytest.raises(ValueError, match="No route found"):
-        resolve_model("unknown-model")
+        await resolve_model("unknown-model")
 
 
 def test_proxy_and_ui_auth(monkeypatch: pytest.MonkeyPatch) -> None:

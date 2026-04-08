@@ -24,6 +24,7 @@ from ai_proxy.config.settings import (
 )
 from ai_proxy.core import key_resolution as key_resolution_mod
 from ai_proxy.core.key_resolution import resolve_provider_key
+from ai_proxy.services.model_catalog import CatalogModel
 
 
 class CapturingAdapter:
@@ -448,6 +449,17 @@ async def test_list_models_with_bypass_accepts_any_key(monkeypatch: pytest.Monke
     )
     monkeypatch.setattr(proxy_router, "get_app_config", lambda: bypass_config)
     monkeypatch.setattr(proxy_router, "check_model_access", lambda _hash, _model: (True, ""))
+
+    async def fake_catalog(*, config=None):
+        return {
+            "test-model": CatalogModel(
+                client_model="test-model",
+                provider_name="openrouter",
+                mapped_model="test-model",
+            )
+        }
+
+    monkeypatch.setattr(proxy_router, "get_proxy_model_catalog", fake_catalog)
 
     app = create_app()
     transport = ASGITransport(app=app)

@@ -15,7 +15,10 @@ _registry: dict[str, BaseAdapter] = {}
 
 def build_registry(config: AppConfig) -> dict[str, BaseAdapter]:
     global _registry
+    from ai_proxy.services.model_catalog import invalidate_model_catalog
+
     _registry = {}
+    invalidate_model_catalog()
     for name, prov in config.providers.items():
         api_key = None
         if prov.api_key_env:

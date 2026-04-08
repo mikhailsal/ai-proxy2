@@ -1,5 +1,6 @@
 """Proxy API router — /v1/chat/completions, /v1/models."""
 
+import inspect
 import json
 import time
 import uuid
@@ -29,6 +30,7 @@ from ai_proxy.core.routing import RouteResult, resolve_model
 from ai_proxy.logging.models import LogEntry
 from ai_proxy.logging.service import enqueue_log
 from ai_proxy.security.auth import validate_proxy_api_key
+from ai_proxy.services.model_catalog import get_proxy_model_catalog, serialize_catalog_model
 from ai_proxy.types import JsonObject
 
 logger = structlog.get_logger()
@@ -93,7 +95,7 @@ def _authenticate_proxy_request(request: Request) -> tuple[str, str, bool] | JSO
     return api_key or "", key_hash, is_known_key
 
 
-def _validate_and_route_request(body: JsonObject, key_hash: str) -> tuple[str, RouteResult] | JSONResponse:
+async def _validate_and_route_request(body: JsonObject, key_hash: str) -> tuple[str, RouteResult] | JSONResponse:
     model_requested = body.get("model", "")
     if not model_requested:
         return JSONResponse({"error": {"message": "model field is required"}}, status_code=400)
@@ -103,7 +105,8 @@ def _validate_and_route_request(body: JsonObject, key_hash: str) -> tuple[str, R
         return JSONResponse({"error": {"message": reason}}, status_code=403)
 
     try:
-        route = resolve_model(model_requested)
+        resolved = resolve_model(model_requested)
+        route = await resolved if inspect.isawaitable(resolved) else resolved
     except ValueError as error:
         return JSONResponse({"error": {"message": str(error)}}, status_code=404)
 
@@ -137,7 +140,7 @@ async def chat_completions(request: Request) -> Response:
         return auth
     client_api_key, key_hash, is_known_key = auth
 
-    request_validation = _validate_and_route_request(body, key_hash)
+    request_validation = await _validate_and_route_request(body, key_hash)
     if isinstance(request_validation, JSONResponse):
         return request_validation
     model_requested, route = request_validation
@@ -380,16 +383,12 @@ async def list_models(request: Request) -> JSONResponse:
         return JSONResponse({"error": {"message": "Invalid API key"}}, status_code=401)
 
     models: list[JsonObject] = []
-    seen: set[str] = set()
-    for model_name in config.model_mappings:
-        if any(char in model_name for char in "*?[]"):
-            continue
+    catalog = await get_proxy_model_catalog(config=config)
+    for model_name, entry in catalog.items():
         allowed, _ = check_model_access(key_hash, model_name)
         if not allowed:
             continue
-        if model_name not in seen:
-            seen.add(model_name)
-            models.append({"id": model_name, "object": "model", "owned_by": "ai-proxy"})
+        models.append(serialize_catalog_model(entry))
 
     return JSONResponse({"object": "list", "data": models})
 

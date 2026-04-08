@@ -173,7 +173,7 @@ Streaming (`"stream": true`) is supported.
 | Endpoint | Auth | Description |
 |---|---|---|
 | `POST /v1/chat/completions` | `api_keys` / bypass | Proxy chat completions |
-| `GET /v1/models` | `api_keys` / bypass | List configured models |
+| `GET /v1/models` | `api_keys` / bypass | List current proxy models, including wildcard-expanded provider models |
 | `POST /admin/reload-config` | none | Hot-reload config and secrets |
 | `GET /ui/v1/health` | `ui_api_key` | Authenticated UI connectivity check |
 | `GET /ui/v1/requests` | `ui_api_key` | Request log browser |
@@ -196,7 +196,7 @@ Configuration is split into two files:
 | Field | Description |
 |---|---|
 | `providers` | Named provider definitions (type, endpoint, headers) |
-| `model_mappings` | `client-model: provider:real-model` mappings (glob patterns ok) |
+| `model_mappings` | `client-model: provider:real-model` mappings (glob patterns ok on both sides; upstream metadata is forwarded on `/v1/models` when available) |
 | `response.include_ai_proxy_route` | Add the resolved `provider:model` route to JSON client responses (default: true) |
 | `bypass.enabled` | Accept unknown keys and forward them to the provider (default: false) |
 | `access_rules` | Per-key model allow/deny lists (optional) |

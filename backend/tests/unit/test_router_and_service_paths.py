@@ -14,6 +14,7 @@ from ai_proxy.api.proxy import router as proxy_router
 from ai_proxy.app import create_app
 from ai_proxy.config.settings import AppConfig
 from ai_proxy.logging import service
+from ai_proxy.services.model_catalog import CatalogModel
 
 
 class FakeSuccessAdapter:
@@ -223,21 +224,30 @@ async def test_ai_proxy_route_can_be_disabled(monkeypatch: pytest.MonkeyPatch) -
 async def test_list_models_and_transport_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
     app = create_app()
     transport = ASGITransport(app=app)
-
     monkeypatch.setattr(proxy_router, "validate_proxy_api_key", lambda key, **kw: (bool(key), "hash", True))
     monkeypatch.setattr(proxy_router, "check_model_access", lambda _hash, model: (model != "blocked-model", "blocked"))
     monkeypatch.setattr(
         proxy_router,
         "get_app_config",
-        lambda: SimpleNamespace(
-            bypass=SimpleNamespace(enabled=False),
-            model_mappings={
-                "gpt-4o-mini": "provider:model",
-                "gpt-*": "provider:*",
-                "blocked-model": "provider:blocked",
-            },
-        ),
+        lambda: SimpleNamespace(bypass=SimpleNamespace(enabled=False)),
     )
+
+    async def fake_catalog(*, config=None):
+        return {
+            "gpt-4o-mini": CatalogModel(
+                client_model="gpt-4o-mini",
+                provider_name="provider",
+                mapped_model="provider-model",
+                metadata={"id": "provider-model", "pricing": {"prompt": 1}},
+            ),
+            "blocked-model": CatalogModel(
+                client_model="blocked-model",
+                provider_name="provider",
+                mapped_model="blocked-model",
+            ),
+        }
+
+    monkeypatch.setattr(proxy_router, "get_proxy_model_catalog", fake_catalog)
 
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         unauthorized = await client.get("/v1/models")
@@ -246,7 +256,14 @@ async def test_list_models_and_transport_helpers(monkeypatch: pytest.MonkeyPatch
     assert unauthorized.status_code == 401
     assert authorized.json() == {
         "object": "list",
-        "data": [{"id": "gpt-4o-mini", "object": "model", "owned_by": "ai-proxy"}],
+        "data": [
+            {
+                "id": "gpt-4o-mini",
+                "object": "model",
+                "owned_by": "provider",
+                "pricing": {"prompt": 1},
+            }
+        ],
     }
     assert proxy_router._extract_api_key(SimpleNamespace(headers={"Authorization": "Basic nope"})) is None
     assert proxy_router._transport_error_status(httpx.TimeoutException("boom")) == 504
