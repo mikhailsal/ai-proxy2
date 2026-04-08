@@ -8,6 +8,7 @@ afterEach(() => {
   vi.resetModules();
   vi.doUnmock('../../src/app/RequestsWorkspace');
   vi.doUnmock('../../src/app/ChatWorkspace');
+  vi.doUnmock('../../src/app/ModelsWorkspace');
   vi.doUnmock('../../src/components/RequestBrowser/RequestBrowser');
   vi.doUnmock('../../src/components/RequestDetail/RequestDetail');
   vi.doUnmock('../../src/components/ChatView/ChatView');
@@ -61,6 +62,24 @@ describe('ConnectedApp and workspaces', () => {
     render(<ConnectedApp onDisconnect={vi.fn()} />);
 
     expect(screen.getByText('chat workspace')).toBeInTheDocument();
+  });
+
+  it('renders the models workspace when models tab is active', async () => {
+    vi.doMock('../../src/app/useNavigationState', () => ({
+      useNavigationState: () => ({
+        activeRequestSummary: null,
+        navigation: { activeTab: 'models' } as NavigationState,
+        setSelectedRequestSummary: vi.fn(),
+        updateNavigation: vi.fn(),
+      }),
+    }));
+    vi.doMock('../../src/components/common/StatsBar', () => ({ StatsBar: () => <div>stats</div> }));
+    vi.doMock('../../src/app/ModelsWorkspace', () => ({ ModelsWorkspace: () => <div>models workspace</div> }));
+
+    const { ConnectedApp } = await import('../../src/app/ConnectedApp');
+    render(<ConnectedApp onDisconnect={vi.fn()} />);
+
+    expect(screen.getByText('models workspace')).toBeInTheDocument();
   });
 
   it('wires request browser and request detail callbacks', async () => {

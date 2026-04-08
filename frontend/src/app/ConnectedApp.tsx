@@ -1,4 +1,5 @@
 import { ChatWorkspace } from './ChatWorkspace';
+import { ModelsWorkspace } from './ModelsWorkspace';
 import { RequestsWorkspace } from './RequestsWorkspace';
 import { AppIcon } from '../components/common/AppIcon';
 import { StatsBar } from '../components/common/StatsBar';
@@ -32,6 +33,8 @@ export function ConnectedApp({ onDisconnect }: ConnectedAppProps) {
             onSelectRequestSummary={setSelectedRequestSummary}
             updateNavigation={updateNavigation}
           />
+        ) : navigation.activeTab === 'models' ? (
+          <ModelsWorkspace />
         ) : (
           <ChatWorkspace navigation={navigation} updateNavigation={updateNavigation} />
         )}
@@ -41,9 +44,9 @@ export function ConnectedApp({ onDisconnect }: ConnectedAppProps) {
 }
 
 interface NavigationBarProps {
-  activeTab: 'requests' | 'chat';
+  activeTab: 'requests' | 'chat' | 'models';
   onDisconnect: () => void;
-  onSelectTab: (tab: 'requests' | 'chat') => void;
+  onSelectTab: (tab: 'requests' | 'chat' | 'models') => void;
 }
 
 function NavigationBar({ activeTab, onDisconnect, onSelectTab }: NavigationBarProps) {
@@ -62,6 +65,12 @@ function NavigationBar({ activeTab, onDisconnect, onSelectTab }: NavigationBarPr
         onClick={() => onSelectTab('chat')}
       >
         Chat
+      </button>
+      <button
+        style={{ ...styles.navTab, ...(activeTab === 'models' ? styles.navTabActive : {}) }}
+        onClick={() => onSelectTab('models')}
+      >
+        Models
       </button>
       <div style={{ flex: 1 }} />
       <button onClick={onDisconnect} style={styles.disconnectBtn}>

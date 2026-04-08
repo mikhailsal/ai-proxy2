@@ -54,6 +54,13 @@ describe('navigation helpers', () => {
         selectedChatGroup: 'team-a',
       }, location),
     ).toBe('/app?tab=chat&groupBy=system_prompt_first_user&group=team-a#hash');
+
+    expect(
+      buildNavigationUrl({ ...DEFAULT_NAVIGATION, activeTab: 'models' }, location),
+    ).toBe('/app?tab=models#hash');
+
+    const modelsLocation = { hash: '', pathname: '/', search: '?tab=models' } as Location;
+    expect(readNavigationFromLocation(modelsLocation).activeTab).toBe('models');
   });
 });
 

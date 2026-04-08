@@ -74,6 +74,21 @@ describe('BrowserApiClient', () => {
     await expect(client.getStats()).rejects.toEqual(new ApiError(500, 'Server Error', 'bad stats'));
     await expect(client.downloadExport('req-1', 'json')).rejects.toEqual(new ApiError(403, 'Forbidden', 'bad export'));
   });
+
+  it('fetches model catalog via listModels', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({ object: 'list', data: [{ id: 'gpt-4o', provider: 'openai', mapped_model: 'gpt-4o' }] }),
+    );
+    const client = createApiClient({ baseUrl: 'http://localhost:8000', uiApiKey: 'secret' });
+
+    const result = await client.listModels();
+    expect(result.data).toHaveLength(1);
+    expect(result.data[0].id).toBe('gpt-4o');
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:8000/ui/v1/models',
+      withAuth('secret'),
+    );
+  });
 });
 
 function jsonResponse(body: unknown): Response {

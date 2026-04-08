@@ -86,3 +86,31 @@ export interface ConnectionSettings {
   baseUrl: string;
   uiApiKey: string;
 }
+
+export interface ProxyModelPricing {
+  prompt?: string | number | null;
+  completion?: string | number | null;
+  input?: string | number | null;
+  output?: string | number | null;
+  [key: string]: string | number | null | undefined;
+}
+
+export interface ProxyModel {
+  id: string;
+  provider: string;
+  mapped_model: string;
+  pinned_providers?: string[] | null;
+  owned_by?: string | null;
+  object?: string;
+  created?: number | null;
+  name?: string | null;
+  description?: string | null;
+  context_length?: number | null;
+  pricing?: ProxyModelPricing | null;
+  [key: string]: unknown;
+}
+
+export interface ProxyModelsPage {
+  object: string;
+  data: ProxyModel[];
+}

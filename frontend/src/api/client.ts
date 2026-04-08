@@ -1,6 +1,7 @@
 import type {
   ConversationMessage,
   ConversationsPage,
+  ProxyModelsPage,
   RequestDetail,
   RequestSummary,
   RequestsPage,
@@ -47,6 +48,7 @@ export interface ApiClient {
   getConversationMessages(groupKey: string, groupBy?: string): Promise<{ items: ConversationMessage[] }>;
   downloadExport(id: string, format?: 'json' | 'markdown'): Promise<void>;
   exportUrl(id: string, format?: 'json' | 'markdown'): string;
+  listModels(): Promise<ProxyModelsPage>;
   getAuthHeader(): string;
 }
 
@@ -127,6 +129,10 @@ class BrowserApiClient implements ApiClient {
 
   exportUrl(id: string, format: 'json' | 'markdown' = 'json'): string {
     return `${trimBaseUrl(this.baseUrl)}/ui/v1/export/requests/${id}?format=${format}`;
+  }
+
+  async listModels(): Promise<ProxyModelsPage> {
+    return fetchApi<ProxyModelsPage>(this.baseUrl, this.uiApiKey, '/ui/v1/models');
   }
 
   getAuthHeader(): string {

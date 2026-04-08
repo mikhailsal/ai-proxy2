@@ -1,4 +1,4 @@
-export type ActiveTab = 'requests' | 'chat';
+export type ActiveTab = 'requests' | 'chat' | 'models';
 export type ChatGroupBy = 'system_prompt_first_user' | 'system_prompt_first_user_first_assistant';
 
 export interface NavigationState {
@@ -29,8 +29,11 @@ export function parseChatGroupBy(value: string | null): ChatGroupBy {
 
 export function readNavigationFromLocation(location: Location = window.location): NavigationState {
   const params = new URLSearchParams(location.search);
+  const rawTab = params.get('tab');
+  const activeTab: ActiveTab =
+    rawTab === 'chat' ? 'chat' : rawTab === 'models' ? 'models' : 'requests';
   return {
-    activeTab: params.get('tab') === 'chat' ? 'chat' : 'requests',
+    activeTab,
     requestId: params.get('request'),
     requestSearch: params.get('q') ?? '',
     requestModelFilter: params.get('model') ?? '',
@@ -53,6 +56,8 @@ export function buildNavigationUrl(
     if (state.selectedChatGroup) {
       params.set('group', state.selectedChatGroup);
     }
+  } else if (state.activeTab === 'models') {
+    params.set('tab', 'models');
   } else {
     if (state.requestSearch) {
       params.set('q', state.requestSearch);

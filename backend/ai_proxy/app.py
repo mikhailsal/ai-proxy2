@@ -12,6 +12,7 @@ from ai_proxy.api.deps import require_ui_auth
 from ai_proxy.api.proxy.router import router as proxy_router
 from ai_proxy.api.ui.chats import router as chats_router
 from ai_proxy.api.ui.export import router as export_router
+from ai_proxy.api.ui.models import router as models_router
 from ai_proxy.api.ui.requests import router as requests_router
 from ai_proxy.config.loader import load_config
 from ai_proxy.config.settings import get_settings
@@ -105,6 +106,7 @@ def create_app() -> FastAPI:
     application.include_router(requests_router)
     application.include_router(chats_router)
     application.include_router(export_router)
+    application.include_router(models_router)
 
     return application
 
