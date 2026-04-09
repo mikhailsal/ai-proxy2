@@ -13,7 +13,7 @@ from fastapi import Request
 from fastapi.responses import Response, StreamingResponse
 
 from ai_proxy.adapters.openai_compat import parse_sse_chunk
-from ai_proxy.api.proxy.response_utils import client_route_identifier
+from ai_proxy.api.proxy.response_utils import client_route_identifier, normalize_error_response_body
 from ai_proxy.core.routing import RouteResult
 from ai_proxy.logging.models import LogEntry
 from ai_proxy.logging.service import enqueue_log
@@ -62,7 +62,7 @@ async def stream_error_response(
 ) -> Response:
     latency = (time.monotonic() - start_time) * 1000
     response_body = upstream_stream.parsed_error_body()
-    client_response_body = inject_ai_proxy_route(response_body, route)
+    client_response_body = inject_ai_proxy_route(normalize_error_response_body(response_body), route)
     client_resp_headers = proxy_response_headers(upstream_stream.headers)
     await enqueue_log(
         LogEntry.from_proxy_context(

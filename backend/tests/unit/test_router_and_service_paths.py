@@ -279,6 +279,14 @@ def test_transport_and_cost_helpers() -> None:
     assert response_utils.extract_error_message({"message": "broken"}) == "broken"
     assert response_utils.extract_error_message({"raw_text": "broken"}) == "broken"
     assert response_utils.extract_error_message(None, "fallback") == "fallback"
+    assert response_utils.normalize_error_response_body({"error": "broken", "message": "broken"}) == {
+        "error": {"message": "broken"},
+        "message": "broken",
+    }
+    assert response_utils.normalize_error_response_body({"message": "broken"}) == {
+        "message": "broken",
+        "error": {"message": "broken"},
+    }
     assert response_utils.extract_cost(None) is None
     assert response_utils.extract_cost({}) is None
     assert response_utils.extract_cost({"usage": {"cost": 0.0025}}) == 0.0025

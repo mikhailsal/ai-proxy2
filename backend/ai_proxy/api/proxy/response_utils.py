@@ -113,6 +113,26 @@ def extract_error_message(response_body: Any, fallback: str | None = None) -> st
     return fallback
 
 
+def normalize_error_response_body(response_body: Any) -> Any:
+    if not isinstance(response_body, dict) or "raw_text" in response_body:
+        return response_body
+
+    error = response_body.get("error")
+    message = extract_error_message(response_body)
+    if not isinstance(message, str) or not message:
+        return response_body
+
+    normalized_body = dict(response_body)
+    if isinstance(error, dict):
+        normalized_error = dict(error)
+        normalized_error.setdefault("message", message)
+        normalized_body["error"] = normalized_error
+        return normalized_body
+
+    normalized_body["error"] = {"message": message}
+    return normalized_body
+
+
 def client_route_identifier(route: RouteResult) -> str:
     route_label = getattr(route, "route_label", None)
     if isinstance(route_label, str) and route_label:

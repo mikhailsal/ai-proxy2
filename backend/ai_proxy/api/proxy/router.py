@@ -15,6 +15,7 @@ from ai_proxy.api.proxy.response_utils import (
     extract_cost,
     extract_error_message,
     extract_usage,
+    normalize_error_response_body,
     proxy_response_headers,
 )
 from ai_proxy.api.proxy.response_utils import (
@@ -250,7 +251,11 @@ async def _finalize_non_streaming_response(
     client_request_body: JsonObject | None,
 ) -> Response:
     response_body = upstream_response.parsed_body()
-    client_response_body = _inject_ai_proxy_route(response_body, route)
+    client_body_source = response_body
+    if upstream_response.status_code >= 400:
+        client_body_source = normalize_error_response_body(response_body)
+
+    client_response_body = _inject_ai_proxy_route(client_body_source, route)
     is_json = isinstance(client_response_body, dict) and "raw_text" not in client_response_body
     client_response_headers = proxy_response_headers(upstream_response.headers, json_body=is_json)
     input_tokens, output_tokens, total_tokens = extract_usage(response_body)

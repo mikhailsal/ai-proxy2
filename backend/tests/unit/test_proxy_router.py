@@ -95,6 +95,56 @@ async def test_non_streaming_provider_http_error_is_preserved(
 
 
 @pytest.mark.asyncio
+async def test_non_streaming_provider_string_error_is_normalized(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = create_app()
+    transport = ASGITransport(app=app)
+
+    adapter = FakeAdapter(
+        response=ProviderResponse(
+            status_code=404,
+            headers={"content-type": "application/json", "x-upstream": "missing-model"},
+            body=b'{"error":"model missing","message":"model missing"}',
+            content_type="application/json",
+        )
+    )
+    route = SimpleNamespace(provider_name="openrouter", mapped_model="provider-model", adapter=adapter)
+    logged_entries = []
+
+    async def capture_log(entry):
+        logged_entries.append(entry)
+
+    monkeypatch.setattr(proxy_router, "get_app_config", _default_config)
+    monkeypatch.setattr(proxy_router, "check_model_access", lambda *_args: (True, ""))
+    monkeypatch.setattr(proxy_router, "apply_modifications", lambda body, headers, *_args: (body, headers))
+    monkeypatch.setattr(proxy_router, "resolve_model", lambda _model: route)
+    monkeypatch.setattr(proxy_router, "enqueue_log", capture_log)
+    monkeypatch.setattr(proxy_router, "resolve_provider_key", lambda *_args, **_kw: None)
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            headers={"Authorization": "Bearer proxy-key"},
+            json={"model": "gpt-4o-mini", "messages": [{"role": "user", "content": "hello"}]},
+        )
+
+    assert response.status_code == 404
+    assert response.json() == {
+        "error": {"message": "model missing"},
+        "message": "model missing",
+        "ai_proxy_route": "openrouter:provider-model",
+    }
+    assert response.headers["x-upstream"] == "missing-model"
+    assert logged_entries[0].error_message == "model missing"
+    assert logged_entries[0].client_response_body == {
+        "error": {"message": "model missing"},
+        "message": "model missing",
+        "ai_proxy_route": "openrouter:provider-model",
+    }
+
+
+@pytest.mark.asyncio
 async def test_non_streaming_transport_errors_become_gateway_failures(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

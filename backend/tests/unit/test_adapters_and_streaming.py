@@ -338,6 +338,46 @@ async def test_streaming_helpers_error_response(monkeypatch: pytest.MonkeyPatch)
 
 
 @pytest.mark.asyncio
+async def test_streaming_helpers_normalize_string_error_response(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def capture_log(entry):
+        return None
+
+    monkeypatch.setattr(streaming, "enqueue_log", capture_log)
+    route = SimpleNamespace(provider_name="provider", mapped_model="mapped-model")
+
+    error_stream = SimpleNamespace(
+        status_code=404,
+        headers={"content-type": "application/json"},
+        error_body=b'{"error":"missing model","message":"missing model"}',
+        parsed_error_body=lambda: {"error": "missing model", "message": "missing model"},
+    )
+
+    error_response = await streaming.stream_error_response(
+        request=make_request(),
+        request_id=uuid.uuid4(),
+        key_hash="hash",
+        sent_request_headers={"Content-Type": "application/json"},
+        forward_body={"model": "mapped-model"},
+        route=route,
+        model_requested="gpt-4o-mini",
+        start_time=0.0,
+        upstream_stream=error_stream,
+        extract_error_message=lambda body: body.get("message"),
+        inject_ai_proxy_route=lambda body, route: {
+            **body,
+            "ai_proxy_route": f"{route.provider_name}:{route.mapped_model}",
+        },
+        proxy_response_headers=lambda headers: dict(headers),
+    )
+
+    assert error_response.status_code == 404
+    assert error_response.body == (
+        b'{"error": {"message": "missing model"}, "message": "missing model", '
+        b'"ai_proxy_route": "provider:mapped-model"}'
+    )
+
+
+@pytest.mark.asyncio
 async def test_streaming_helpers_handle_missing_body_and_transport_errors() -> None:
     state = streaming.StreamState(response_headers={"content-type": "text/event-stream"}, response_status_code=200)
     chunks = [
