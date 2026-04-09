@@ -14,6 +14,7 @@ logger = structlog.get_logger()
 
 
 _STRIPPED_REQUEST_HEADERS = {
+    "accept-encoding",
     "authorization",
     "content-length",
     "content-type",
@@ -36,6 +37,7 @@ _STRIPPED_REQUEST_HEADERS = {
 class OpenAICompatAdapter(BaseAdapter):
     def _build_headers(self, headers: dict[str, str], *, override_api_key: str | None = None) -> dict[str, str]:
         out = {k: v for k, v in headers.items() if k.lower() not in _STRIPPED_REQUEST_HEADERS}
+        out["Accept-Encoding"] = "identity"
         out["Content-Type"] = "application/json"
         effective_key = override_api_key if override_api_key is not None else self.api_key
         if effective_key:
