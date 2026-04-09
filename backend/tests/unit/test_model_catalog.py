@@ -68,6 +68,48 @@ async def test_proxy_model_catalog_expands_upstream_wildcards_and_exact_override
 
 
 @pytest.mark.asyncio
+async def test_proxy_model_catalog_expands_matching_client_and_upstream_wildcards() -> None:
+    invalidate_model_catalog()
+    config = AppConfig(
+        providers={"kilocode": ProviderConfig(endpoint="https://kilocode.example")},
+        model_mappings={
+            "google/gemma-4-*": "kilocode:google/gemma-4-*",
+            "google/gemma-4-27b-it": "kilocode:google/gemma-4-27b-it+preferred",
+        },
+    )
+    adapter = CountingAdapter(
+        [
+            {"id": "google/gemma-4-27b-it", "owned_by": "kilocode", "context_length": 131072},
+            {"id": "google/gemma-4-9b-it", "owned_by": "kilocode", "context_length": 65536},
+            {"id": "google/gemma-3-27b-it", "owned_by": "kilocode"},
+        ]
+    )
+
+    catalog = await get_proxy_model_catalog(config=config, registry={"kilocode": adapter})
+
+    assert set(catalog) == {"google/gemma-4-27b-it", "google/gemma-4-9b-it"}
+
+    default_model = catalog["google/gemma-4-9b-it"]
+    assert default_model == CatalogModel(
+        client_model="google/gemma-4-9b-it",
+        provider_name="kilocode",
+        mapped_model="google/gemma-4-9b-it",
+        pinned_providers=None,
+        metadata={"id": "google/gemma-4-9b-it", "owned_by": "kilocode", "context_length": 65536},
+    )
+
+    overridden = catalog["google/gemma-4-27b-it"]
+    assert overridden.provider_name == "kilocode"
+    assert overridden.mapped_model == "google/gemma-4-27b-it"
+    assert overridden.pinned_providers == ["preferred"]
+    assert overridden.metadata == {
+        "id": "google/gemma-4-27b-it",
+        "owned_by": "kilocode",
+        "context_length": 131072,
+    }
+
+
+@pytest.mark.asyncio
 async def test_provider_model_catalog_is_cached_until_invalidated() -> None:
     invalidate_model_catalog()
     config = AppConfig(
@@ -118,6 +160,26 @@ async def test_resolve_model_supports_expanded_upstream_wildcards(monkeypatch: p
     assert expanded.provider_name == "kilocode"
     assert expanded.mapped_model == "z-ai/glm-4.5-air:free"
     assert expanded.pinned_providers == ["z.ai"]
+
+
+@pytest.mark.asyncio
+async def test_resolve_model_supports_client_wildcard_mapping(monkeypatch: pytest.MonkeyPatch) -> None:
+    invalidate_model_catalog()
+    config = AppConfig(
+        providers={"kilocode": ProviderConfig(endpoint="https://kilocode.example")},
+        model_mappings={"google/gemma-4-*": "kilocode:google/gemma-4-*"},
+    )
+    adapter = CountingAdapter([])
+    registry = {"kilocode": adapter}
+
+    monkeypatch.setattr("ai_proxy.core.routing.get_app_config", lambda: config)
+    monkeypatch.setattr("ai_proxy.core.routing.get_adapter_registry", lambda: registry)
+
+    expanded = await resolve_model("google/gemma-4-27b-it")
+
+    assert expanded.provider_name == "kilocode"
+    assert expanded.mapped_model == "google/gemma-4-27b-it"
+    assert expanded.pinned_providers is None
 
 
 def test_serialize_catalog_model_preserves_upstream_metadata() -> None:

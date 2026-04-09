@@ -81,35 +81,7 @@ async def get_proxy_model_catalog(
     config = config or get_app_config()
     registry = registry or get_adapter_registry()
     provider_models = await _get_provider_models_for_mappings(config, registry)
-    catalog: dict[str, CatalogModel] = {}
-
-    for client_model, mapping in config.model_mappings.items():
-        if has_glob(client_model):
-            continue
-
-        provider_name, mapped_model_pattern, pinned = parse_mapping(mapping)
-        if not has_glob(mapped_model_pattern):
-            continue
-
-        cache_entry = provider_models.get(provider_name)
-        if cache_entry is None:
-            continue
-
-        for upstream_model in cache_entry.models:
-            upstream_id = upstream_model.get("id")
-            if not isinstance(upstream_id, str) or not fnmatch.fnmatch(upstream_id, mapped_model_pattern):
-                continue
-
-            catalog.setdefault(
-                upstream_id,
-                CatalogModel(
-                    client_model=upstream_id,
-                    provider_name=provider_name,
-                    mapped_model=upstream_id,
-                    pinned_providers=pinned,
-                    metadata=dict(upstream_model),
-                ),
-            )
+    catalog = _expand_wildcard_catalog_entries(config, provider_models)
 
     for client_model, mapping in config.model_mappings.items():
         if has_glob(client_model):
@@ -132,6 +104,48 @@ async def get_proxy_model_catalog(
             pinned_providers=pinned,
             metadata=metadata,
         )
+
+    return catalog
+
+
+def _expand_wildcard_catalog_entries(
+    config: AppConfig,
+    provider_models: dict[str, _ProviderModelsCacheEntry],
+) -> dict[str, CatalogModel]:
+    catalog: dict[str, CatalogModel] = {}
+
+    for client_model, mapping in config.model_mappings.items():
+        provider_name, mapped_model_pattern, pinned = parse_mapping(mapping)
+        if not has_glob(mapped_model_pattern):
+            continue
+
+        cache_entry = provider_models.get(provider_name)
+        if cache_entry is None:
+            continue
+
+        for upstream_model in cache_entry.models:
+            upstream_id = upstream_model.get("id")
+            if not isinstance(upstream_id, str):
+                continue
+
+            expanded_client_model = _resolve_expanded_catalog_client_model(
+                client_model,
+                mapped_model_pattern,
+                upstream_id,
+            )
+            if expanded_client_model is None:
+                continue
+
+            catalog.setdefault(
+                expanded_client_model,
+                CatalogModel(
+                    client_model=expanded_client_model,
+                    provider_name=provider_name,
+                    mapped_model=upstream_id,
+                    pinned_providers=pinned,
+                    metadata=dict(upstream_model),
+                ),
+            )
 
     return catalog
 
@@ -210,3 +224,17 @@ def _resolve_catalog_model_name(client_model: str, mapped_model_pattern: str) ->
             return client_model
         return None
     return mapped_model_pattern
+
+
+def _resolve_expanded_catalog_client_model(
+    client_model_pattern: str,
+    mapped_model_pattern: str,
+    upstream_id: str,
+) -> str | None:
+    if not fnmatch.fnmatch(upstream_id, mapped_model_pattern):
+        return None
+    if not has_glob(client_model_pattern):
+        return upstream_id
+    if fnmatch.fnmatch(upstream_id, client_model_pattern):
+        return upstream_id
+    return None
