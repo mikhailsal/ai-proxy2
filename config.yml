@@ -31,7 +31,6 @@ model_mappings:
   "openai/gpt-5.4": "kilocode:openai/gpt-5.4"
   "openai/gpt-5.4-mini": "kilocode:openai/gpt-5.4-mini"
   "openai/gpt-5.4-nano": "kilocode:openai/gpt-5.4-nano"
-  "openai/gpt-5.4-pro": "kilocode:openai/gpt-5.4-pro"
   "openai/gpt-4o-mini": "kilocode:openai/gpt-4o-mini"
   "openai/gpt-oss-120b": "kilocode:openai/gpt-oss-120b"
   "openai/gpt-oss-20b": "kilocode:openai/gpt-oss-20b"
@@ -77,8 +76,6 @@ model_mappings:
   # DeepSeek
   "deepseek/deepseek-v3.2": "kilocode:deepseek/deepseek-v3.2+alibaba"
   "deepseek/deepseek-v3.2-exp": "kilocode:deepseek/deepseek-v3.2-exp"
-
-
   # X-AI
   "x-ai/grok-4.20-beta": "kilocode:x-ai/grok-4.20-beta"
   "x-ai/grok-4.1-fast": "kilocode:x-ai/grok-4.1-fast"
@@ -107,8 +104,8 @@ model_mappings:
   # Amazon
   "amazon/nova-2-lite-v1": "kilocode:amazon/nova-2-lite-v1"
   # OpenRouter
-
   "openrouter/free": "kilocode:openrouter/free"
+
   # NVIDIA NIM (direct)
   # 01-ai
   "nvidia/01-ai/yi-large": "nvidia:01-ai/yi-large"
