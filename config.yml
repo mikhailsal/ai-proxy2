@@ -48,8 +48,9 @@ model_mappings:
   "google/gemini-3.1-pro-preview": "kilocode:google/gemini-3.1-pro-preview"
   "google/gemini-3.1-flash-lite-preview": "kilocode:google/gemini-3.1-flash-lite-preview"
   "google/gemma-3-27b-it": "kilocode:google/gemma-3-27b-it"
-  "google/gemma-4-31b-it": "kilocode:google/gemma-4-31b-it"
-  "google/gemma-4-26b-a4b-it": "kilocode:google/gemma-4-26b-a4b-it"
+  "google/gemma-4-*": "kilocode:google/gemma-4-*"
+  "google/gemma-4-31b-it:free": "openrouter:google/gemma-4-31b-it:free"
+
   # Meta
   "meta-llama/llama-4-scout": "kilocode:meta-llama/llama-4-scout"
   "meta-llama/llama-3.3-70b-instruct": "kilocode:meta-llama/llama-3.3-70b-instruct"
@@ -339,7 +340,7 @@ modification_rules: []
 
 # Logging settings
 logging:
-  log_retention_days: 30
+  log_retention_days: 0  # 0 = infinite retention (no auto-deletion)
   batch_size: 50
   flush_interval_seconds: 5
 

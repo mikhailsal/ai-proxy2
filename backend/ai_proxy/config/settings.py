@@ -22,7 +22,7 @@ class ProviderConfig(BaseModel):
 
 
 class LoggingConfig(BaseModel):
-    log_retention_days: int = 30
+    log_retention_days: int = 0  # 0 = infinite retention (no auto-deletion)
     batch_size: int = 50
     flush_interval_seconds: int = 5
 
