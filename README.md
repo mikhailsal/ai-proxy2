@@ -125,6 +125,8 @@ POSTGRES_PASSWORD=your-secure-password docker compose -f docker-compose.yml -f d
 cd frontend && npm install && npm run dev
 ```
 
+`make up` and `make up-dev` now run a config validation step in the backend container first and fail immediately if `config.yml` or `config.secrets.yml` is invalid.
+
 - API: http://localhost:8000
 - Docker UI: http://localhost:3000
 - Vite UI: http://localhost:5173

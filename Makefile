@@ -1,9 +1,11 @@
-.PHONY: help lint format test-unit test-integration test-all coverage frontend-coverage quality-check install-hooks up down up-dev down-dev migrate migrate-create frontend-install frontend-lint frontend-test
+.PHONY: help lint format test-unit test-integration test-all coverage frontend-coverage quality-check install-hooks up down up-dev down-dev migrate migrate-create frontend-install frontend-lint frontend-test validate-config validate-config-dev
 
 # ── Defaults ──────────────────────────────────────────────────────────
 SHELL := /bin/bash
 BACKEND_DIR := backend
 FRONTEND_DIR := frontend
+COMPOSE := docker compose
+COMPOSE_DEV := docker compose -f docker-compose.yml -f docker-compose.dev.yml
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -66,18 +68,28 @@ migrate-rollback: ## Rollback last migration
 migrate-create: ## Create a new migration (usage: make migrate-create msg="description")
 	cd $(BACKEND_DIR) && python -m alembic revision --autogenerate -m "$(msg)"
 
+validate-config: ## Validate config files in the backend container before startup
+	$(COMPOSE) build backend
+	$(COMPOSE) run --rm --no-deps backend python -m ai_proxy.config.validate
+
+validate-config-dev: ## Validate dev config files in the backend container before startup
+	$(COMPOSE_DEV) build backend
+	$(COMPOSE_DEV) run --rm --no-deps backend python -m ai_proxy.config.validate
+
 # ── Docker ────────────────────────────────────────────────────────────
 up: ## Start production stack
-	docker compose up -d --build
+	$(MAKE) validate-config
+	$(COMPOSE) up -d --build
 
 down: ## Stop production stack
 	docker compose down
 
 up-dev: ## Start development stack (hot-reload backend, no Traefik)
-	docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+	$(MAKE) validate-config-dev
+	$(COMPOSE_DEV) up -d --build
 
 down-dev: ## Stop development stack
-	docker compose -f docker-compose.yml -f docker-compose.dev.yml down
+	$(COMPOSE_DEV) down
 
 logs: ## Tail all container logs
 	docker compose logs -f

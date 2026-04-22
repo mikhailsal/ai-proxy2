@@ -9,6 +9,7 @@ from fastapi import HTTPException
 from ai_proxy.adapters.registry import build_registry, get_adapter_registry
 from ai_proxy.api import deps
 from ai_proxy.config import loader
+from ai_proxy.config.loader import ConfigValidationError
 from ai_proxy.config.settings import (
     AccessRule,
     AppConfig,
@@ -17,6 +18,8 @@ from ai_proxy.config.settings import (
     get_settings,
     reset_settings,
 )
+from ai_proxy.config.validate import main as validate_config_main
+from ai_proxy.config.validate import validate_config_files
 from ai_proxy.core import access, modification, routing
 from ai_proxy.core.access import check_model_access
 from ai_proxy.core.modification import apply_modifications
@@ -164,6 +167,72 @@ def test_loader_works_without_secrets_file(tmp_path: Path) -> None:
     assert config.api_keys == []
     assert config.ui_api_key == ""
     assert config.key_mappings == {}
+
+
+def test_loader_surfaces_yaml_syntax_errors(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.yml"
+    config_path.write_text(
+        """
+providers:
+    primary:
+        endpoint: https://provider.example
+model_mappings:
+    broken: "missing-quote
+""".strip()
+    )
+
+    with pytest.raises(ConfigValidationError, match=r"Invalid YAML in .*config\.yml:5:\d+"):
+        loader.load_config(str(config_path))
+
+
+def test_validate_config_rejects_unknown_model_mapping_provider(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.yml"
+    config_path.write_text(
+        """
+providers:
+    primary:
+        endpoint: https://provider.example
+model_mappings:
+    gpt-4o-mini: missing-provider:mapped-model
+""".strip()
+    )
+
+    with pytest.raises(ConfigValidationError, match="unknown provider 'missing-provider'"):
+        validate_config_files(str(config_path))
+
+
+def test_validate_config_main_reports_failure(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    config_path = tmp_path / "config.yml"
+    config_path.write_text(
+        """
+providers:
+    broken:
+        endpoint: "unterminated
+""".strip()
+    )
+
+    exit_code = validate_config_main(["--config", str(config_path), "--secrets", str(tmp_path / "missing.yml")])
+
+    assert exit_code == 1
+    assert "Config validation failed:" in capsys.readouterr().err
+
+
+def test_validate_config_main_reports_success(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    config_path = tmp_path / "config.yml"
+    config_path.write_text(
+        """
+providers:
+    primary:
+        endpoint: https://provider.example
+model_mappings:
+    gpt-4o-mini: primary:mapped-model
+""".strip()
+    )
+
+    exit_code = validate_config_main(["--config", str(config_path), "--secrets", str(tmp_path / "missing.yml")])
+
+    assert exit_code == 0
+    assert "Config validation passed:" in capsys.readouterr().out
 
 
 def test_access_rules_and_modifications(monkeypatch: pytest.MonkeyPatch) -> None:

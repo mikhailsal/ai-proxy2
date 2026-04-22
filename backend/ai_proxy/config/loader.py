@@ -6,30 +6,140 @@ auto-hashed (SHA-256) at load time.
 """
 
 import hashlib
+from collections.abc import Mapping
+from typing import Any
 
 import structlog
 import yaml
+from pydantic import ValidationError
 
 from ai_proxy.config.settings import AppConfig, KeyMappingEntry, ProviderConfig
+from ai_proxy.core.model_mappings import parse_mapping
 
 logger = structlog.get_logger()
 
 _app_config: AppConfig | None = None
 
 
+class ConfigValidationError(ValueError):
+    """Raised when config files are syntactically or structurally invalid."""
+
+
 def _hash_key(key: str) -> str:
     return hashlib.sha256(key.encode()).hexdigest()
 
 
-def _load_yaml(path: str) -> dict:
+def _format_yaml_error(path: str, exc: yaml.YAMLError) -> str:
+    mark = getattr(exc, "problem_mark", None)
+    problem = getattr(exc, "problem", None) or str(exc)
+    if mark is None:
+        return f"Invalid YAML in {path}: {problem}"
+    return f"Invalid YAML in {path}:{mark.line + 1}:{mark.column + 1}: {problem}"
+
+
+def _format_validation_error(source: str, exc: ValidationError) -> str:
+    details = []
+    for error in exc.errors():
+        location = ".".join(str(part) for part in error.get("loc", ())) or "root"
+        details.append(f"{location}: {error['msg']}")
+    detail_text = "; ".join(details) if details else str(exc)
+    return f"Invalid configuration in {source}: {detail_text}"
+
+
+def _expect_mapping(value: object, *, field_name: str, source: str) -> dict[str, Any]:
+    if value is None:
+        return {}
+    if isinstance(value, Mapping):
+        return {str(key): item for key, item in value.items()}
+    raise ConfigValidationError(f"Invalid configuration in {source}: {field_name} must be a mapping")
+
+
+def _load_providers(raw: Mapping[str, Any], *, source: str) -> dict[str, ProviderConfig]:
+    raw_providers = _expect_mapping(raw.get("providers", {}), field_name="providers", source=source)
+    providers: dict[str, ProviderConfig] = {}
+    try:
+        for name, prov_data in raw_providers.items():
+            provider_data = _expect_mapping(prov_data, field_name=f"providers.{name}", source=source)
+            providers[name] = ProviderConfig(**provider_data)
+    except ValidationError as exc:
+        raise ConfigValidationError(_format_validation_error(source, exc)) from exc
+    return providers
+
+
+def _load_key_mappings(raw_mappings: Mapping[str, Any], *, source: str) -> dict[str, KeyMappingEntry]:
+    result: dict[str, KeyMappingEntry] = {}
+    for client_key, mapping_data in raw_mappings.items():
+        if not isinstance(mapping_data, Mapping):
+            continue
+        entry_data = {str(key): item for key, item in mapping_data.items()}
+        hashed = _hash_key(client_key) if not _looks_like_hash(client_key) else client_key
+        try:
+            result[hashed] = KeyMappingEntry(**entry_data)
+        except ValidationError as exc:
+            raise ConfigValidationError(_format_validation_error(source, exc)) from exc
+    return result
+
+
+def _load_api_keys(secrets: Mapping[str, Any]) -> list[str]:
+    api_keys_raw = secrets.get("api_keys", [])
+    if isinstance(api_keys_raw, str):
+        return [key.strip() for key in api_keys_raw.split(",") if key.strip()]
+    if isinstance(api_keys_raw, list):
+        return [str(key).strip() for key in api_keys_raw if str(key).strip()]
+    return []
+
+
+def _load_model_mappings(raw: Mapping[str, Any], *, source: str) -> dict[str, str]:
+    raw_model_mappings = _expect_mapping(raw.get("model_mappings", {}), field_name="model_mappings", source=source)
+    model_mappings: dict[str, str] = {}
+    for client_model, mapping in raw_model_mappings.items():
+        if not isinstance(mapping, str):
+            raise ConfigValidationError(
+                f"Invalid configuration in {source}: model_mappings.{client_model} must map to a string"
+            )
+        model_mappings[client_model] = mapping
+    return model_mappings
+
+
+def _build_app_config(
+    raw: Mapping[str, Any],
+    *,
+    config_path: str,
+    providers: dict[str, ProviderConfig],
+    model_mappings: dict[str, str],
+    key_mappings: dict[str, KeyMappingEntry],
+    api_keys: list[str],
+    ui_api_key: str,
+) -> AppConfig:
+    try:
+        return AppConfig(
+            providers=providers,
+            model_mappings=model_mappings,
+            response=raw.get("response", {}),
+            access_rules=raw.get("access_rules", {}),
+            modification_rules=raw.get("modification_rules", []),
+            bypass=raw.get("bypass", {}),
+            key_mappings=key_mappings,
+            api_keys=api_keys,
+            ui_api_key=ui_api_key,
+            logging=raw.get("logging", {}),
+            grouping=raw.get("grouping", {}),
+        )
+    except ValidationError as exc:
+        raise ConfigValidationError(_format_validation_error(config_path, exc)) from exc
+
+
+def _load_yaml(path: str) -> dict[str, Any]:
     try:
         with open(path) as f:  # noqa: PTH123
             return yaml.safe_load(f) or {}
     except FileNotFoundError:
         return {}
+    except yaml.YAMLError as exc:
+        raise ConfigValidationError(_format_yaml_error(path, exc)) from exc
 
 
-def _load_secrets(secrets_path: str) -> dict:
+def _load_secrets(secrets_path: str) -> dict[str, Any]:
     raw = _load_yaml(secrets_path)
     if not raw:
         logger.info("secrets_file_not_found_or_empty", path=secrets_path)
@@ -38,20 +148,20 @@ def _load_secrets(secrets_path: str) -> dict:
     return raw
 
 
-def _build_key_mappings(raw_mappings: dict) -> dict[str, KeyMappingEntry]:
-    """Build key mappings, auto-hashing plaintext client keys."""
-    result: dict[str, KeyMappingEntry] = {}
-    for client_key, mapping_data in raw_mappings.items():
-        if not isinstance(mapping_data, dict):
-            continue
-        hashed = _hash_key(client_key) if not _looks_like_hash(client_key) else client_key
-        result[hashed] = KeyMappingEntry(**mapping_data)
-    return result
-
-
 def _looks_like_hash(value: str) -> bool:
     """Detect if a value is already a 64-char hex SHA-256 hash."""
     return len(value) == 64 and all(c in "0123456789abcdef" for c in value)
+
+
+def _validate_model_mappings(model_mappings: Mapping[str, str], provider_names: set[str], *, source: str) -> None:
+    for client_model, mapping in model_mappings.items():
+        provider_name, _, _ = parse_mapping(mapping)
+        if provider_name not in provider_names:
+            raise ConfigValidationError(
+                "Invalid configuration in "
+                f"{source}: model_mappings.{client_model} "
+                f"references unknown provider '{provider_name}'"
+            )
 
 
 def load_config(config_path: str, secrets_path: str | None = None) -> AppConfig:
@@ -60,40 +170,34 @@ def load_config(config_path: str, secrets_path: str | None = None) -> AppConfig:
     if not raw:
         logger.warning("config_file_not_found", path=config_path)
 
-    secrets: dict = {}
+    secrets: dict[str, Any] = {}
     if secrets_path:
         secrets = _load_secrets(secrets_path)
 
-    providers = {}
-    for name, prov_data in raw.get("providers", {}).items():
-        providers[name] = ProviderConfig(**prov_data)
+    providers = _load_providers(raw, source=config_path)
 
-    raw_key_mappings = secrets.get("key_mappings", raw.get("key_mappings", {})) or {}
-    key_mappings = _build_key_mappings(raw_key_mappings)
-
-    api_keys_raw = secrets.get("api_keys", [])
-    if isinstance(api_keys_raw, str):
-        api_keys = [k.strip() for k in api_keys_raw.split(",") if k.strip()]
-    elif isinstance(api_keys_raw, list):
-        api_keys = [str(k).strip() for k in api_keys_raw if str(k).strip()]
-    else:
-        api_keys = []
-
+    raw_key_mappings = _expect_mapping(
+        secrets.get("key_mappings", raw.get("key_mappings", {})) or {},
+        field_name="key_mappings",
+        source=secrets_path or config_path,
+    )
+    key_mappings = _load_key_mappings(raw_key_mappings, source=secrets_path or config_path)
+    api_keys = _load_api_keys(secrets)
     ui_api_key = str(secrets.get("ui_api_key", "")) or ""
+    model_mappings = _load_model_mappings(raw, source=config_path)
 
-    _app_config = AppConfig(
+    _app_config = _build_app_config(
+        raw,
+        config_path=config_path,
         providers=providers,
-        model_mappings=raw.get("model_mappings", {}),
-        response=raw.get("response", {}),
-        access_rules=raw.get("access_rules", {}),
-        modification_rules=raw.get("modification_rules", []),
-        bypass=raw.get("bypass", {}),
+        model_mappings=model_mappings,
         key_mappings=key_mappings,
         api_keys=api_keys,
         ui_api_key=ui_api_key,
-        logging=raw.get("logging", {}),
-        grouping=raw.get("grouping", {}),
     )
+
+    _validate_model_mappings(_app_config.model_mappings, set(providers), source=config_path)
+
     logger.info(
         "config_loaded",
         providers=list(providers.keys()),
