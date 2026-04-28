@@ -1,4 +1,4 @@
-.PHONY: help lint format test-unit test-integration test-all coverage frontend-coverage quality-check install-hooks up down up-dev down-dev migrate migrate-create frontend-install frontend-lint frontend-test validate-config validate-config-dev
+.PHONY: help lint format test-unit test-integration test-all coverage frontend-coverage quality-check install-hooks up down up-dev down-dev migrate migrate-create frontend-install frontend-lint frontend-test validate-config validate-config-dev reload-config
 
 # ── Defaults ──────────────────────────────────────────────────────────
 SHELL := /bin/bash
@@ -6,6 +6,7 @@ BACKEND_DIR := backend
 FRONTEND_DIR := frontend
 COMPOSE := docker compose
 COMPOSE_DEV := docker compose -f docker-compose.yml -f docker-compose.dev.yml
+API_BASE_URL ?= http://localhost:8000
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -75,6 +76,9 @@ validate-config: ## Validate config files in the backend container before startu
 validate-config-dev: ## Validate dev config files in the backend container before startup
 	$(COMPOSE_DEV) build backend
 	$(COMPOSE_DEV) run --rm --no-deps backend python -m ai_proxy.config.validate
+
+reload-config: ## Reload config and secrets via the running backend API
+	curl --fail --silent --show-error -X POST $(API_BASE_URL)/admin/reload-config
 
 # ── Docker ────────────────────────────────────────────────────────────
 up: ## Start production stack

@@ -172,6 +172,14 @@ cd frontend && npm install && npm run dev
 
 `make up` and `make up-dev` now run a config validation step in the backend container first and fail immediately if `config.yml` or `config.secrets.yml` is invalid.
 
+When the backend is already running, you can hot-reload `config.yml` and `config.secrets.yml` without restarting the stack:
+
+```bash
+make reload-config
+```
+
+Override the backend URL when needed, for example `make reload-config API_BASE_URL=http://127.0.0.1:8001`.
+
 - API: http://localhost:8000
 - Docker UI: http://localhost:3000
 - Vite UI: http://localhost:5173
