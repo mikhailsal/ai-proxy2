@@ -67,7 +67,7 @@ def _patch_common(monkeypatch, adapter, *, provider_name: str = "openrouter"):
 
     monkeypatch.setattr(proxy_router, "check_model_access", lambda *_args: (True, ""))
     monkeypatch.setattr(proxy_router, "apply_modifications", lambda body, headers, *_args: (body, headers))
-    monkeypatch.setattr(proxy_router, "resolve_model", lambda _model: route)
+    monkeypatch.setattr(proxy_router, "resolve_model", lambda _model, **_kw: route)
     monkeypatch.setattr(proxy_router, "enqueue_log", capture_log)
     return logged
 
@@ -218,7 +218,7 @@ async def test_key_mapping_different_providers(monkeypatch: pytest.MonkeyPatch) 
     transport = ASGITransport(app=app)
 
     route_or = SimpleNamespace(provider_name="openrouter", mapped_model="or-model", adapter=adapter_or)
-    monkeypatch.setattr(proxy_router, "resolve_model", lambda _model: route_or)
+    monkeypatch.setattr(proxy_router, "resolve_model", lambda _model, **_kw: route_or)
 
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.post(
@@ -230,7 +230,7 @@ async def test_key_mapping_different_providers(monkeypatch: pytest.MonkeyPatch) 
     assert adapter_or.last_override_key == "sk-or-mapped"
 
     route_ant = SimpleNamespace(provider_name="anthropic", mapped_model="ant-model", adapter=adapter_ant)
-    monkeypatch.setattr(proxy_router, "resolve_model", lambda _model: route_ant)
+    monkeypatch.setattr(proxy_router, "resolve_model", lambda _model, **_kw: route_ant)
 
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.post(

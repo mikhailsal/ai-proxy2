@@ -59,14 +59,22 @@ def _inject_ai_proxy_route(response_body: Any, route: RouteResult) -> Any:
 def _apply_provider_pinning(body: JsonObject, route: RouteResult) -> None:
     """Inject ``provider.order`` + ``allow_fallbacks: false`` from pinned providers.
 
-    Client-supplied ``order`` takes priority; ``allow_fallbacks`` uses
-    ``setdefault`` so an explicit client value is preserved.
+    Provider-aware matches override the client's ``provider.order`` (the config
+    may rename slugs). Otherwise client ``order`` takes priority.
     """
     if not getattr(route, "pinned_providers", None):
         return
 
+    provider_aware = getattr(route, "provider_aware_match", False)
     existing = body.get("provider")
-    if isinstance(existing, dict):
+
+    if provider_aware:
+        if isinstance(existing, dict):
+            existing["order"] = route.pinned_providers
+            existing.setdefault("allow_fallbacks", False)
+        else:
+            body["provider"] = {"order": route.pinned_providers, "allow_fallbacks": False}
+    elif isinstance(existing, dict):
         if "order" not in existing:
             existing["order"] = route.pinned_providers
             existing.setdefault("allow_fallbacks", False)
@@ -106,7 +114,7 @@ async def _validate_and_route_request(body: JsonObject, key_hash: str) -> tuple[
         return JSONResponse({"error": {"message": reason}}, status_code=403)
 
     try:
-        resolved = resolve_model(model_requested)
+        resolved = resolve_model(model_requested, body=body)
         route = await resolved if inspect.isawaitable(resolved) else resolved
     except ValueError as error:
         return JSONResponse({"error": {"message": str(error)}}, status_code=404)

@@ -113,7 +113,7 @@ async def test_chat_completions_route_and_access_failures(monkeypatch: pytest.Mo
         monkeypatch.setattr(
             proxy_router,
             "resolve_model",
-            lambda _model: (_ for _ in ()).throw(ValueError("missing route")),
+            lambda _model, **_kw: (_ for _ in ()).throw(ValueError("missing route")),
         )
         not_found = await client.post(
             "/v1/chat/completions",
@@ -143,7 +143,7 @@ async def test_non_streaming_and_streaming_success_paths(monkeypatch: pytest.Mon
     monkeypatch.setattr(proxy_router, "resolve_provider_key", lambda *_args, **_kw: None)
 
     route = SimpleNamespace(provider_name="provider", mapped_model="mapped-model", adapter=FakeSuccessAdapter())
-    monkeypatch.setattr(proxy_router, "resolve_model", lambda _model: route)
+    monkeypatch.setattr(proxy_router, "resolve_model", lambda _model, **_kw: route)
 
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post(
@@ -164,7 +164,7 @@ async def test_non_streaming_and_streaming_success_paths(monkeypatch: pytest.Mon
     }
 
     route = SimpleNamespace(provider_name="provider", mapped_model="mapped-model", adapter=FakeErrorStreamAdapter())
-    monkeypatch.setattr(proxy_router, "resolve_model", lambda _model: route)
+    monkeypatch.setattr(proxy_router, "resolve_model", lambda _model, **_kw: route)
 
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         stream_response = await client.post(
@@ -199,7 +199,7 @@ async def test_ai_proxy_route_can_be_disabled(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr(
         proxy_router,
         "resolve_model",
-        lambda _model: SimpleNamespace(
+        lambda _model, **_kw: SimpleNamespace(
             provider_name="provider",
             mapped_model="mapped-model",
             adapter=FakeSuccessAdapter(),

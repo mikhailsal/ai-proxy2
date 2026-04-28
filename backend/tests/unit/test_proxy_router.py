@@ -69,7 +69,7 @@ async def test_non_streaming_provider_http_error_is_preserved(
     monkeypatch.setattr(proxy_router, "get_app_config", _default_config)
     monkeypatch.setattr(proxy_router, "check_model_access", lambda *_args: (True, ""))
     monkeypatch.setattr(proxy_router, "apply_modifications", lambda body, headers, *_args: (body, headers))
-    monkeypatch.setattr(proxy_router, "resolve_model", lambda _model: route)
+    monkeypatch.setattr(proxy_router, "resolve_model", lambda _model, **_kw: route)
     monkeypatch.setattr(proxy_router, "enqueue_log", capture_log)
     monkeypatch.setattr(proxy_router, "resolve_provider_key", lambda *_args, **_kw: None)
 
@@ -118,7 +118,7 @@ async def test_non_streaming_provider_string_error_is_normalized(
     monkeypatch.setattr(proxy_router, "get_app_config", _default_config)
     monkeypatch.setattr(proxy_router, "check_model_access", lambda *_args: (True, ""))
     monkeypatch.setattr(proxy_router, "apply_modifications", lambda body, headers, *_args: (body, headers))
-    monkeypatch.setattr(proxy_router, "resolve_model", lambda _model: route)
+    monkeypatch.setattr(proxy_router, "resolve_model", lambda _model, **_kw: route)
     monkeypatch.setattr(proxy_router, "enqueue_log", capture_log)
     monkeypatch.setattr(proxy_router, "resolve_provider_key", lambda *_args, **_kw: None)
 
@@ -161,7 +161,7 @@ async def test_non_streaming_transport_errors_become_gateway_failures(
     monkeypatch.setattr(proxy_router, "get_app_config", _default_config)
     monkeypatch.setattr(proxy_router, "check_model_access", lambda *_args: (True, ""))
     monkeypatch.setattr(proxy_router, "apply_modifications", lambda body, headers, *_args: (body, headers))
-    monkeypatch.setattr(proxy_router, "resolve_model", lambda _model: route)
+    monkeypatch.setattr(proxy_router, "resolve_model", lambda _model, **_kw: route)
     monkeypatch.setattr(proxy_router, "enqueue_log", capture_log)
     monkeypatch.setattr(proxy_router, "resolve_provider_key", lambda *_args, **_kw: None)
 

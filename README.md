@@ -71,6 +71,51 @@ model_mappings:
 
 Model names support `fnmatch` glob patterns. The first matching rule wins.
 
+### 3a. Provider-aware routing (optional)
+
+Provider-aware routing lets you send the same model to different gateways depending on which sub-provider the client requests. This is useful when a particular sub-provider is cheaper, faster, or only available on a specific gateway.
+
+Add provider-qualified entries to `model_mappings` using the `model+provider` format on the left side:
+
+```yaml
+model_mappings:
+  # Base route (no provider preference)
+  "openai/gpt-oss-120b": "kilocode:openai/gpt-oss-120b"
+  # Route to kilocode when the client requests bedrock
+  "openai/gpt-oss-120b+bedrock": "kilocode:openai/gpt-oss-120b+bedrock"
+  # Route to openrouter when the client requests deepinfra
+  "openai/gpt-oss-120b+deepinfra": "openrouter:openai/gpt-oss-120b+deepinfra"
+  # Rename provider slugs (Google -> google-ai-studio)
+  "google/gemma-4-26b-a4b-it+Google": "openrouter:google/gemma-4-26b-a4b-it+google-ai-studio"
+```
+
+Clients can request a sub-provider in two ways — the proxy handles both transparently:
+
+1. **`+suffix` on the model name**: `"model": "openai/gpt-oss-120b+deepinfra"`
+2. **OpenRouter-style `provider.order`** in the request body:
+   ```json
+   {
+     "model": "openai/gpt-oss-120b",
+     "provider": { "order": ["deepinfra"] }
+   }
+   ```
+
+**Resolution order:**
+
+| Priority | Source | Description |
+|---|---|---|
+| 1 | `+suffix` on model name | Highest — always checked first |
+| 2 | `provider.order` in body | Checked when no `+suffix` is present |
+| 3 | Base model mapping | Fallback when no provider-qualified entry matches |
+
+**Edge cases:**
+
+- When both `+suffix` and `provider.order` are present, `+suffix` wins.
+- Provider names are matched **case-insensitively** (e.g., `DeepInfra` matches `deepinfra`).
+- When a provider-qualified config entry renames the provider slug (e.g., `+Google` → `+google-ai-studio`), the renamed slug is forwarded upstream.
+- When no matching provider-qualified entry exists, the proxy falls back to the base model mapping and passes through the client's provider preference normally.
+- **Conflict detection**: at config load time, the proxy logs an error when ambiguous entries are detected (e.g., a base mapping pins to provider X via one gateway, but a qualified entry routes the same provider through a different gateway).
+
 ### 4. Bypass mode (optional)
 
 When bypass is enabled in `config.yml`, clients who are **not** in the `api_keys` list can still use the proxy by sending their own provider API key directly:
@@ -198,7 +243,7 @@ Configuration is split into two files:
 | Field | Description |
 |---|---|
 | `providers` | Named provider definitions (type, endpoint, headers) |
-| `model_mappings` | `client-model: provider:real-model` mappings (glob patterns ok on both sides; upstream metadata is forwarded on `/v1/models` when available) |
+| `model_mappings` | `client-model: provider:real-model` mappings (glob patterns ok on both sides; upstream metadata is forwarded on `/v1/models` when available). Provider-qualified keys (`model+provider`) enable gateway selection based on sub-provider — see §3a |
 | `response.include_ai_proxy_route` | Add the resolved `provider:model` route to JSON client responses (default: true) |
 | `bypass.enabled` | Accept unknown keys and forward them to the provider (default: false) |
 | `access_rules` | Per-key model allow/deny lists (optional) |

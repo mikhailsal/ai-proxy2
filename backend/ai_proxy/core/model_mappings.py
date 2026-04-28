@@ -1,5 +1,9 @@
 """Helpers for parsing and formatting model mappings."""
 
+from __future__ import annotations
+
+from typing import Any
+
 
 def has_glob(value: str) -> bool:
     return any(char in value for char in "*?[]")
@@ -54,3 +58,23 @@ def format_route_label(provider_name: str, mapped_model: str, pinned: list[str] 
     if pinned:
         route_label = f"{route_label}+{','.join(pinned)}"
     return route_label
+
+
+def extract_body_provider_slugs(body: dict[str, Any]) -> list[str] | None:
+    """Extract provider slugs from the OpenRouter-style ``provider.order`` body field.
+
+    Returns the list of provider slugs if present, otherwise ``None``.
+    """
+    provider_field = body.get("provider")
+    if not isinstance(provider_field, dict):
+        return None
+    order = provider_field.get("order")
+    if not isinstance(order, list) or not order:
+        return None
+    slugs = [slug for slug in order if isinstance(slug, str) and slug]
+    return slugs or None
+
+
+def build_provider_qualified_key(model: str, provider_slug: str) -> str:
+    """Build a ``model+provider`` lookup key for provider-aware routing."""
+    return f"{model}+{provider_slug}"

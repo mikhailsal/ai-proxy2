@@ -180,7 +180,7 @@ async def test_pinning_injected_into_forwarded_body(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(proxy_router, "validate_proxy_api_key", lambda _key, **kw: (True, "hash", True))
     monkeypatch.setattr(proxy_router, "check_model_access", lambda *_args: (True, ""))
     monkeypatch.setattr(proxy_router, "apply_modifications", lambda body, headers, *_args: (body, headers))
-    monkeypatch.setattr(proxy_router, "resolve_model", lambda _model: route)
+    monkeypatch.setattr(proxy_router, "resolve_model", lambda _model, **_kw: route)
 
     async def capture_log(entry):
         logged.append(entry)
@@ -217,7 +217,7 @@ async def test_client_provider_order_overrides_pinning(monkeypatch: pytest.Monke
     monkeypatch.setattr(proxy_router, "validate_proxy_api_key", lambda _key, **kw: (True, "hash", True))
     monkeypatch.setattr(proxy_router, "check_model_access", lambda *_args: (True, ""))
     monkeypatch.setattr(proxy_router, "apply_modifications", lambda body, headers, *_args: (body, headers))
-    monkeypatch.setattr(proxy_router, "resolve_model", lambda _model: route)
+    monkeypatch.setattr(proxy_router, "resolve_model", lambda _model, **_kw: route)
 
     async def noop_log(entry):
         pass
@@ -260,7 +260,7 @@ async def test_no_pinning_when_route_has_none(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr(proxy_router, "validate_proxy_api_key", lambda _key, **kw: (True, "hash", True))
     monkeypatch.setattr(proxy_router, "check_model_access", lambda *_args: (True, ""))
     monkeypatch.setattr(proxy_router, "apply_modifications", lambda body, headers, *_args: (body, headers))
-    monkeypatch.setattr(proxy_router, "resolve_model", lambda _model: route)
+    monkeypatch.setattr(proxy_router, "resolve_model", lambda _model, **_kw: route)
     monkeypatch.setattr(proxy_router, "enqueue_log", noop_log2)
     monkeypatch.setattr(proxy_router, "resolve_provider_key", lambda *_args, **_kw: None)
 
@@ -353,7 +353,7 @@ async def test_client_response_includes_pinned_route_label(monkeypatch: pytest.M
     monkeypatch.setattr(proxy_router, "validate_proxy_api_key", lambda _key, **kw: (True, "hash", True))
     monkeypatch.setattr(proxy_router, "check_model_access", lambda *_args: (True, ""))
     monkeypatch.setattr(proxy_router, "apply_modifications", lambda body, headers, *_args: (body, headers))
-    monkeypatch.setattr(proxy_router, "resolve_model", lambda _model: route)
+    monkeypatch.setattr(proxy_router, "resolve_model", lambda _model, **_kw: route)
     monkeypatch.setattr(proxy_router, "enqueue_log", noop_log)
     monkeypatch.setattr(proxy_router, "resolve_provider_key", lambda *_args, **_kw: None)
 

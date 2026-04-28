@@ -14,7 +14,7 @@ import yaml
 from pydantic import ValidationError
 
 from ai_proxy.config.settings import AppConfig, KeyMappingEntry, ProviderConfig
-from ai_proxy.core.model_mappings import parse_mapping
+from ai_proxy.core.model_mappings import parse_mapping, strip_client_provider_suffix
 
 logger = structlog.get_logger()
 
@@ -164,6 +164,62 @@ def _validate_model_mappings(model_mappings: Mapping[str, str], provider_names: 
             )
 
 
+def _detect_provider_routing_conflicts(model_mappings: Mapping[str, str]) -> list[str]:
+    """Detect conflicts between base model mappings and provider-qualified entries.
+
+    A conflict occurs when:
+    1. A base mapping ``model -> gateway:model+pin`` has a pinned provider,
+       and a separate ``model+pin -> different_gateway:...`` entry exists
+       routing to a different gateway.
+    2. Two provider-qualified entries for the same base model and the same
+       sub-provider (case-insensitive) point to different gateways.
+
+    Returns a list of human-readable conflict descriptions.
+    """
+    qualified_entries: dict[str, list[tuple[str, str, str]]] = {}
+    base_entries: dict[str, tuple[str, str, list[str] | None]] = {}
+
+    for client_key, mapping in model_mappings.items():
+        base_model, suffix_slugs = strip_client_provider_suffix(client_key)
+        gateway, _, pinned = parse_mapping(mapping)
+
+        if suffix_slugs:
+            norm_key = f"{base_model.lower()}+{suffix_slugs[0].lower()}"
+            qualified_entries.setdefault(norm_key, []).append((client_key, gateway, mapping))
+        else:
+            base_entries[client_key.lower()] = (gateway, client_key, pinned)
+
+    conflicts: list[str] = []
+
+    for norm_key, entries in qualified_entries.items():
+        if len(entries) > 1:
+            gateways = {gw for _, gw, _ in entries}
+            if len(gateways) > 1:
+                keys = [key for key, _, _ in entries]
+                conflicts.append(
+                    f"Conflicting provider-qualified entries for "
+                    f"'{norm_key}': {keys} route to different gateways {gateways}"
+                )
+
+    for base_key_lower, (base_gw, base_key_orig, base_pinned) in base_entries.items():
+        if not base_pinned:
+            continue
+        for pin_slug in base_pinned:
+            norm_key = f"{base_key_lower}+{pin_slug.lower()}"
+            matched = qualified_entries.get(norm_key)
+            if not matched:
+                continue
+            for q_key, q_gw, _q_mapping in matched:
+                if q_gw.lower() != base_gw.lower():
+                    conflicts.append(
+                        f"Base mapping '{base_key_orig}' pins to '{pin_slug}' "
+                        f"via gateway '{base_gw}', but qualified entry "
+                        f"'{q_key}' routes to gateway '{q_gw}'"
+                    )
+
+    return conflicts
+
+
 def load_config(config_path: str, secrets_path: str | None = None) -> AppConfig:
     global _app_config
     raw = _load_yaml(config_path)
@@ -198,6 +254,10 @@ def load_config(config_path: str, secrets_path: str | None = None) -> AppConfig:
 
     _validate_model_mappings(_app_config.model_mappings, set(providers), source=config_path)
 
+    routing_conflicts = _detect_provider_routing_conflicts(_app_config.model_mappings)
+    for conflict in routing_conflicts:
+        logger.error("provider_routing_conflict", detail=conflict, source=config_path)
+
     logger.info(
         "config_loaded",
         providers=list(providers.keys()),
@@ -207,6 +267,7 @@ def load_config(config_path: str, secrets_path: str | None = None) -> AppConfig:
         api_keys_count=len(_app_config.api_keys),
         ui_api_key_set=bool(_app_config.ui_api_key),
         secrets_loaded=bool(secrets),
+        routing_conflicts=len(routing_conflicts),
     )
     return _app_config
 
