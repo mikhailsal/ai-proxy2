@@ -12,9 +12,15 @@ from ai_proxy.config.settings import AppConfig
 
 
 class FakeAdapter:
-    def __init__(self, response: ProviderResponse | None = None, error: httpx.RequestError | None = None) -> None:
+    def __init__(
+        self,
+        response: ProviderResponse | None = None,
+        error: httpx.RequestError | None = None,
+        prepared_body: dict[str, Any] | None = None,
+    ) -> None:
         self._response = response
         self._error = error
+        self._prepared_body = prepared_body
 
     def _build_headers(self, headers: dict[str, str], *, override_api_key: str | None = None) -> dict[str, str]:
         out = dict(headers)
@@ -22,6 +28,9 @@ class FakeAdapter:
         if override_api_key:
             out["Authorization"] = f"Bearer {override_api_key}"
         return out
+
+    def _prepare_request_body(self, request_body: dict[str, Any]) -> dict[str, Any]:
+        return self._prepared_body or request_body
 
     async def chat_completions(
         self, request_body: dict[str, Any], headers: dict[str, str], *, override_api_key: str | None = None
@@ -58,6 +67,7 @@ async def test_non_streaming_provider_http_error_is_preserved(
             headers={"content-type": "application/json", "x-upstream": "rate-limit"},
             body=b'{"error":{"message":"Too many requests"}}',
             content_type="application/json",
+            sent_request_body={"model": "provider-model"},
         )
     )
     route = SimpleNamespace(provider_name="openrouter", mapped_model="provider-model", adapter=adapter)
@@ -88,6 +98,7 @@ async def test_non_streaming_provider_http_error_is_preserved(
     assert response.headers["x-upstream"] == "rate-limit"
     assert logged_entries[0].response_status_code == 429
     assert logged_entries[0].error_message == "Too many requests"
+    assert logged_entries[0].request_body == {"model": "provider-model"}
     assert logged_entries[0].client_response_body == {
         "error": {"message": "Too many requests"},
         "ai_proxy_route": "openrouter:provider-model",
@@ -151,7 +162,10 @@ async def test_non_streaming_transport_errors_become_gateway_failures(
     app = create_app()
     transport = ASGITransport(app=app)
 
-    adapter = FakeAdapter(error=httpx.ConnectError("boom", request=httpx.Request("POST", "https://provider.example")))
+    adapter = FakeAdapter(
+        error=httpx.ConnectError("boom", request=httpx.Request("POST", "https://provider.example")),
+        prepared_body={"model": "provider-model", "translated": True},
+    )
     route = SimpleNamespace(provider_name="openrouter", mapped_model="provider-model", adapter=adapter)
     logged_entries = []
 
@@ -182,6 +196,7 @@ async def test_non_streaming_transport_errors_become_gateway_failures(
     assert entry.error_message == "boom"
     assert entry.request_headers is not None
     assert entry.request_headers["Content-Type"] == "application/json"
+    assert entry.request_body == {"model": "provider-model", "translated": True}
     assert entry.client_request_body is not None
     assert entry.client_request_body["model"] == "gpt-4o-mini"
     assert entry.client_response_body == {

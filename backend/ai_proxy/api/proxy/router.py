@@ -35,7 +35,6 @@ from ai_proxy.services.model_catalog import get_proxy_model_catalog, serialize_c
 from ai_proxy.types import JsonObject
 
 logger = structlog.get_logger()
-
 router = APIRouter()
 
 
@@ -56,12 +55,14 @@ def _inject_ai_proxy_route(response_body: Any, route: RouteResult) -> Any:
     return apply_ai_proxy_route(response_body, route, config=get_app_config())
 
 
-def _apply_provider_pinning(body: JsonObject, route: RouteResult) -> None:
-    """Inject ``provider.order`` + ``allow_fallbacks: false`` from pinned providers.
+def _resolve_sent_request_body(adapter: Any, forward_body: JsonObject) -> JsonObject:
+    prepare_fn = getattr(adapter, "_prepare_request_body", None)
+    prepared = prepare_fn(forward_body) if callable(prepare_fn) else None
+    return prepared if isinstance(prepared, dict) else forward_body
 
-    Provider-aware matches override the client's ``provider.order`` (the config
-    may rename slugs). Otherwise client ``order`` takes priority.
-    """
+
+def _apply_provider_pinning(body: JsonObject, route: RouteResult) -> None:
+    """Inject pinned provider slugs into ``provider.order`` when needed."""
     if not getattr(route, "pinned_providers", None):
         return
 
@@ -272,7 +273,7 @@ async def _finalize_non_streaming_response(
         request_id=request_id,
         key_hash=key_hash,
         sent_request_headers=upstream_response.sent_request_headers,
-        forward_body=forward_body,
+        forward_body=upstream_response.sent_request_body or forward_body,
         route=route,
         model_requested=model_requested,
         latency=(time.monotonic() - start_time) * 1000,
@@ -292,9 +293,8 @@ async def _finalize_non_streaming_response(
             status_code=upstream_response.status_code,
             headers=client_response_headers,
         )
-    return Response(
-        content=upstream_response.body, status_code=upstream_response.status_code, headers=client_response_headers
-    )
+    status = upstream_response.status_code
+    return Response(content=upstream_response.body, status_code=status, headers=client_response_headers)
 
 
 async def _handle_streaming(
@@ -337,7 +337,7 @@ async def _handle_streaming(
         request_id,
         key_hash,
         upstream_stream,
-        forward_body,
+        upstream_stream.sent_request_body or forward_body,
         route,
         model_requested,
         start_time,
@@ -427,6 +427,7 @@ async def _transport_error_response(
     logger.error(log_event, error=error_message, provider=route.provider_name)
     build_fn = getattr(route.adapter, "_build_headers", None)
     sent_headers = build_fn(forward_headers, override_api_key=override_api_key) if build_fn else forward_headers
+    sent_body = _resolve_sent_request_body(route.adapter, forward_body)
     client_body: JsonObject = {"error": {"message": f"Provider transport error: {error_message}"}}
     client_body = _inject_ai_proxy_route(client_body, route)
     client_headers = {"content-type": "application/json"}
@@ -436,7 +437,7 @@ async def _transport_error_response(
             request=request,
             client_api_key_hash=key_hash,
             request_headers=sent_headers,
-            request_body=forward_body,
+            request_body=sent_body,
             client_request_body=client_request_body,
             model_requested=model_requested,
             model_resolved=route.mapped_model,

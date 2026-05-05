@@ -114,6 +114,7 @@ async def test_openai_compat_chat_completions_builds_headers(monkeypatch: pytest
     }
     assert calls["headers"] == expected_headers
     assert response.sent_request_headers == expected_headers
+    assert response.sent_request_body == {"model": "gpt-4o-mini"}
     assert response.parsed_body() == {"id": "resp"}
 
 
@@ -169,6 +170,7 @@ async def test_openai_compat_streaming_success(monkeypatch: pytest.MonkeyPatch) 
         "Accept-Encoding": "identity",
         "Content-Type": "application/json",
     }
+    assert stream_response.sent_request_body == {"model": "gpt-4o-mini"}
     assert events == [
         "stream:POST:https://provider.example/chat/completions:gpt-4o-mini",
         "enter",
@@ -213,6 +215,7 @@ async def test_openai_compat_streaming_error(monkeypatch: pytest.MonkeyPatch) ->
         "Accept-Encoding": "identity",
         "Content-Type": "application/json",
     }
+    assert error_response.sent_request_body == {"model": "gpt-4o-mini"}
     assert error_response.parsed_error_body() == {"error": {"message": "rate limited"}}
 
 
@@ -279,6 +282,7 @@ async def test_streaming_helpers_success_logging(monkeypatch: pytest.MonkeyPatch
         content_type="text/event-stream",
         body=fake_body(),
         error_body=None,
+        sent_request_body={"model": "provider-model"},
     )
     route = SimpleNamespace(provider_name="provider", mapped_model="mapped-model")
 
@@ -288,7 +292,7 @@ async def test_streaming_helpers_success_logging(monkeypatch: pytest.MonkeyPatch
         request_id=uuid.uuid4(),
         key_hash="hash",
         sent_request_headers=sent_headers,
-        forward_body={"model": "mapped-model"},
+        forward_body={"model": "provider-model"},
         route=route,
         model_requested="gpt-4o-mini",
         start_time=0.0,
@@ -308,13 +312,16 @@ async def test_streaming_helpers_success_logging(monkeypatch: pytest.MonkeyPatch
     assert response.headers["cache-control"] == "no-cache"
     assert logged_entries[0].stream_chunks is not None
     assert logged_entries[0].request_headers == sent_headers
+    assert logged_entries[0].request_body == {"model": "provider-model"}
     assert logged_entries[0].response_body["ai_proxy_route"] == "provider:mapped-model"
 
 
 @pytest.mark.asyncio
 async def test_streaming_helpers_error_response(monkeypatch: pytest.MonkeyPatch) -> None:
+    logged_entries = []
+
     async def capture_log(entry):
-        return None
+        logged_entries.append(entry)
 
     monkeypatch.setattr(streaming, "enqueue_log", capture_log)
     route = SimpleNamespace(provider_name="provider", mapped_model="mapped-model")
@@ -324,6 +331,7 @@ async def test_streaming_helpers_error_response(monkeypatch: pytest.MonkeyPatch)
         headers={"content-type": "application/json"},
         error_body=b'{"error":{"message":"rate limited"}}',
         parsed_error_body=lambda: {"error": {"message": "rate limited"}},
+        sent_request_body={"model": "provider-model"},
     )
 
     error_response = await streaming.stream_error_response(
@@ -331,7 +339,7 @@ async def test_streaming_helpers_error_response(monkeypatch: pytest.MonkeyPatch)
         request_id=uuid.uuid4(),
         key_hash="hash",
         sent_request_headers={"Content-Type": "application/json"},
-        forward_body={"model": "mapped-model"},
+        forward_body={"model": "provider-model"},
         route=route,
         model_requested="gpt-4o-mini",
         start_time=0.0,
@@ -346,12 +354,15 @@ async def test_streaming_helpers_error_response(monkeypatch: pytest.MonkeyPatch)
 
     assert error_response.status_code == 429
     assert error_response.body == b'{"error": {"message": "rate limited"}, "ai_proxy_route": "provider:mapped-model"}'
+    assert logged_entries[0].request_body == {"model": "provider-model"}
 
 
 @pytest.mark.asyncio
 async def test_streaming_helpers_normalize_string_error_response(monkeypatch: pytest.MonkeyPatch) -> None:
+    logged_entries = []
+
     async def capture_log(entry):
-        return None
+        logged_entries.append(entry)
 
     monkeypatch.setattr(streaming, "enqueue_log", capture_log)
     route = SimpleNamespace(provider_name="provider", mapped_model="mapped-model")
@@ -361,6 +372,7 @@ async def test_streaming_helpers_normalize_string_error_response(monkeypatch: py
         headers={"content-type": "application/json"},
         error_body=b'{"error":"missing model","message":"missing model"}',
         parsed_error_body=lambda: {"error": "missing model", "message": "missing model"},
+        sent_request_body={"model": "provider-model"},
     )
 
     error_response = await streaming.stream_error_response(
@@ -368,7 +380,7 @@ async def test_streaming_helpers_normalize_string_error_response(monkeypatch: py
         request_id=uuid.uuid4(),
         key_hash="hash",
         sent_request_headers={"Content-Type": "application/json"},
-        forward_body={"model": "mapped-model"},
+        forward_body={"model": "provider-model"},
         route=route,
         model_requested="gpt-4o-mini",
         start_time=0.0,
@@ -386,6 +398,7 @@ async def test_streaming_helpers_normalize_string_error_response(monkeypatch: py
         b'{"error": {"message": "missing model"}, "message": "missing model", '
         b'"ai_proxy_route": "provider:mapped-model"}'
     )
+    assert logged_entries[0].request_body == {"model": "provider-model"}
 
 
 @pytest.mark.asyncio

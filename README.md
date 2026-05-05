@@ -24,6 +24,7 @@ POSTGRES_PASSWORD=your-secure-password
 
 # Default provider API key (used when no key_mapping overrides it)
 OPENROUTER_API_KEY=sk-or-...
+GEMINI_API_KEY=your-gemini-api-key
 ```
 
 ### 2. Configure secrets
@@ -62,10 +63,15 @@ providers:
   openrouter:
     type: openai_compatible
     endpoint: https://openrouter.ai/api/v1
+  google:
+    type: openai_compatible
+    endpoint: https://generativelanguage.googleapis.com/v1beta/openai
+    api_key_env: GEMINI_API_KEY
 
 model_mappings:
   "gpt-4o": "openrouter:openai/gpt-4o"
   "claude-*": "openrouter:anthropic/claude-3.5-sonnet"
+  "google/gemma-4-31b-it+google-direct": "google:gemma-4-31b-it"
   "*": "openrouter:openai/gpt-4o-mini"  # fallback
 ```
 
@@ -87,6 +93,8 @@ model_mappings:
   "openai/gpt-oss-120b+deepinfra": "openrouter:openai/gpt-oss-120b+deepinfra"
   # Rename provider slugs (Google -> google-ai-studio)
   "google/gemma-4-26b-a4b-it+Google": "openrouter:google/gemma-4-26b-a4b-it+google-ai-studio"
+  # Route directly to Google AI Studio with an opt-in alias
+  "google/gemma-4-31b-it+google-direct": "google:gemma-4-31b-it"
 ```
 
 Clients can request a sub-provider in two ways — the proxy handles both transparently:
@@ -99,6 +107,15 @@ Clients can request a sub-provider in two ways — the proxy handles both transp
      "provider": { "order": ["deepinfra"] }
    }
    ```
+
+For direct gateway escapes such as Google AI Studio, prefer a dedicated opt-in model alias like `google/gemma-4-31b-it+google-direct`. That keeps your base model mapping unchanged and avoids forwarding OpenRouter-specific `provider.order` fields to non-OpenRouter upstreams.
+
+For Google's OpenAI-compatible endpoint, the proxy also normalizes a few request fields before forwarding them upstream:
+
+- OpenRouter-only fields such as `provider` are stripped.
+- For streaming requests, `stream_options.include_usage` is enabled by default so Google returns usage counters and the proxy can log input/output token totals.
+- For hosted `gemma-4-*` models, standard OpenRouter-style reasoning is translated to `extra_body.google.thinking_config.thinking_level` because Google's Gemma endpoint behaves like a binary toggle in practice: `reasoning.effort = none` maps to `thinking_level = minimal`, and any other non-empty effort maps to `thinking_level = high`.
+- Thought display remains separate from reasoning enablement. The proxy may request Google thought summaries with `include_thoughts`, but it never uses `include_thoughts = false` to disable Gemma reasoning.
 
 **Resolution order:**
 
@@ -275,6 +292,7 @@ Client keys in `key_mappings` are written in plaintext — the proxy hashes them
 |---|---|---|
 | `POSTGRES_PASSWORD` | Yes | Database password |
 | `OPENROUTER_API_KEY` | If using OpenRouter | Default provider API key |
+| `GEMINI_API_KEY` | If using direct Google AI Studio routes | Default Google AI Studio API key |
 | `DOMAIN` | Production | Your domain name |
 | `ACME_EMAIL` | Production | Email for Let's Encrypt |
 

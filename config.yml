@@ -18,10 +18,14 @@ providers:
   kilocode:
     type: openai_compatible
     endpoint: https://api.kilo.ai/api/openrouter
+  google:
+    type: openai_compatible
+    endpoint: https://generativelanguage.googleapis.com/v1beta/openai
+    api_key_env: GEMINI_API_KEY
 # Model mappings: client-facing model name -> provider:actual_model
 # Explicit entries are visible in /v1/models. The "*" wildcard is a fallback.
 model_mappings:
-  # ── Whitelist: models from ai-bench (persona-decay-bench + ai-independence-bench) ──
+  "*": "openrouter:*"
   # OpenAI
   "openai/gpt-5-nano": "openrouter:openai/gpt-5-nano"
   "openai/gpt-5.1-codex-mini": "openrouter:openai/gpt-5.1-codex-mini"
@@ -31,67 +35,98 @@ model_mappings:
   "openai/gpt-5.4": "openrouter:openai/gpt-5.4"
   "openai/gpt-5.4-mini": "openrouter:openai/gpt-5.4-mini"
   "openai/gpt-5.4-nano": "openrouter:openai/gpt-5.4-nano"
+  "openai/gpt-5.5": "openrouter:openai/gpt-5.5"
   "openai/gpt-4o-mini": "openrouter:openai/gpt-4o-mini"
-  "openai/gpt-oss-120b": "kilocode:openai/gpt-oss-120b"
-  "openai/gpt-oss-20b": "kilocode:openai/gpt-oss-20b"
+  "openai/gpt-oss-120b": "openrouter:openai/gpt-oss-120b"
+  "openai/gpt-oss-120b+bedrock": "kilocode:openai/gpt-oss-120b+bedrock"
+  "openai/gpt-oss-20b": "openrouter:openai/gpt-oss-20b"
+  "openai/gpt-oss-20b+bedrock": "kilocode:openai/gpt-oss-20b+bedrock"
   # Anthropic
+  "anthropic/claude-3.5-haiku": "kilocode:anthropic/claude-3.5-haiku"
+  "anthropic/claude-3.7-sonnet": "kilocode:anthropic/claude-3.7-sonnet"
+  "anthropic/claude-sonnet-4": "kilocode:anthropic/claude-sonnet-4"
+  "anthropic/claude-sonnet-4.5": "kilocode:anthropic/claude-sonnet-4.5"
   "anthropic/claude-sonnet-4.6": "kilocode:anthropic/claude-sonnet-4.6"
   "anthropic/claude-opus-4.5": "kilocode:anthropic/claude-opus-4.5"
   "anthropic/claude-opus-4.6": "kilocode:anthropic/claude-opus-4.6"
   "anthropic/claude-opus-4.7": "kilocode:anthropic/claude-opus-4.7"
   "anthropic/claude-haiku-4.5": "kilocode:anthropic/claude-haiku-4.5"
   # Google
+  # Direct Google AI Studio aliases keep the default routes unchanged.
+  "google/gemini-2.5-flash-lite+google-direct": "google:gemini-2.5-flash-lite"
+  "google/gemini-2.5-flash+google-direct": "google:gemini-2.5-flash"
+  "google/gemini-3-flash-preview+google-direct": "google:gemini-3-flash-preview"
+  "google/gemini-3-pro-preview+google-direct": "google:gemini-3-pro-preview"
+
+
+  "google/gemini-2.5-flash-lite+google-ai-studio": "google:gemini-2.5-flash-lite"
   "google/gemini-2.5-flash-lite": "kilocode:google/gemini-2.5-flash-lite"
+
+  "google/gemini-2.5-flash-lite-preview-09-2025": "kilocode:google/gemini-2.5-flash-lite-preview-09-2025" #only in vertex
+
   "google/gemini-2.5-flash": "kilocode:google/gemini-2.5-flash"
-  "google/gemini-2.5-flash-lite-preview-09-2025": "kilocode:google/gemini-2.5-flash-lite-preview-09-2025"
   "google/gemini-3-flash-preview": "kilocode:google/gemini-3-flash-preview"
   "google/gemini-3-pro-preview": "kilocode:google/gemini-3-pro-preview"
-  "google/gemini-3.1-pro-preview": "kilocode:google/gemini-3.1-pro-preview"
-  "google/gemini-3.1-flash-lite-preview": "kilocode:google/gemini-3.1-flash-lite-preview"
+  "google/gemini-3.1-pro-preview": "openrouter:google/gemini-3.1-pro-preview"
+  "google/gemini-3.1-flash-lite-preview": "openrouter:google/gemini-3.1-flash-lite-preview"
+
+  #gemma
   "google/gemma-3-27b-it": "kilocode:google/gemma-3-27b-it"
+  "google/gemma-4-31b-it+nim": "nvidia:google/gemma-4-31b-it"
   "google/gemma-4-*": "openrouter:google/gemma-4-*"
   "google/gemma-4-31b-it:free": "openrouter:google/gemma-4-31b-it:free"
   "google/gemma-4-26b-a4b-it:free": "openrouter:google/gemma-4-26b-a4b-it:free"
-  # Provider-aware routing: same model, different gateway per sub-provider
-  "google/gemma-4-26b-a4b-it:free+Google": "openrouter:google/gemma-4-26b-a4b-it:free+google-ai-studio"
-  "google/gemma-4-26b-a4b-it:free+DeepInfra": "kilocode:google/gemma-4-26b-a4b-it:free+DeepInfra"
+  "google/gemma-4-31b-it:free+ai-studio": "google:gemma-4-31b-it"
+  "google/gemma-4-26b-a4b-it:free+ai-studio": "google:gemma-4-26b-a4b-it"
 
   # Meta
   "meta-llama/llama-4-scout": "kilocode:meta-llama/llama-4-scout"
   "meta-llama/llama-3.3-70b-instruct": "kilocode:meta-llama/llama-3.3-70b-instruct"
   # Qwen
-  "qwen/qwen3-8b": "kilocode:qwen/qwen3-8b"
-  "qwen/qwen3.5-9b": "kilocode:qwen/qwen3.5-9b"
-  "qwen/qwen3-coder": "kilocode:qwen/qwen3-coder"
-  "qwen/qwen3-coder-next": "kilocode:qwen/qwen3-coder-next"
-  "qwen/qwen3.5-flash-02-23": "kilocode:qwen/qwen3.5-flash-02-23"
+  "qwen/qwen3-8b": "openrouter:qwen/qwen3-8b"
+  "qwen/qwen3.5-9b": "openrouter:qwen/qwen3.5-9b"
+  "qwen/qwen3-coder": "openrouter:qwen/qwen3-coder"
+  "qwen/qwen3-coder-next": "openrouter:qwen/qwen3-coder-next"
+  "qwen/qwen3.5-flash-02-23": "openrouter:qwen/qwen3.5-flash-02-23"
   "qwen/qwen3.6-plus-preview:free": "kilocode:qwen/qwen3.6-plus-preview:free"
-  "qwen/qwen3.5-35b-a3b": "kilocode:qwen/qwen3.5-35b-a3b"
-  "qwen/qwen3.6-35b-a3b": "kilocode:qwen/qwen3.6-35b-a3b"
+  "qwen/qwen3.5-35b-a3b": "openrouter:qwen/qwen3.5-35b-a3b"
+  "qwen/qwen3.6-35b-a3b": "openrouter:qwen/qwen3.6-35b-a3b"
+  "qwen/qwen3.6-max-preview": "openrouter:qwen/qwen3.6-max-preview"
   # Mistral
-  "mistralai/mistral-small-3.2-24b-instruct": "kilocode:mistralai/mistral-small-3.2-24b-instruct"
-  "mistralai/mistral-small-2603": "kilocode:mistralai/mistral-small-2603"
-  "mistralai/mistral-large-2512": "kilocode:mistralai/mistral-large-2512"
+  "mistralai/mistral-small-3.2-24b-instruct": "openrouter:mistralai/mistral-small-3.2-24b-instruct"
+  "mistralai/mistral-small-2603": "openrouter:mistralai/mistral-small-2603"
+  "mistralai/mistral-large-2512": "openrouter:mistralai/mistral-large-2512"
   # Z-AI
-  "z-ai/glm-5.1": "kilocode:z-ai/*+z.ai"
-  "z-ai/glm-5": "kilocode:z-ai/glm-5"
-  "z-ai/glm-5-turbo": "kilocode:z-ai/glm-5-turbo"
+  "z-ai/glm-5.1": "openrouter:z-ai/glm-5.1+z.ai"
+  "z-ai/glm-5": "openrouter:z-ai/glm-5"
+  "z-ai/glm-5+nim": "nvidia:z-ai/glm5" #sic!
+
   "z-ai/glm-4.5-air:free": "kilocode:z-ai/glm-4.5-air:free"
-  "z-ai/glm-4.7-flash": "kilocode:z-ai/glm-4.7-flash"
+  "z-ai/glm-4.7-flash+bedrock": "kilocode:z-ai/glm-4.7-flash+bedrock"
+  "z-ai/glm-4.7-flash": "openrouter:z-ai/glm-4.7-flash"
   # Moonshot
-  "moonshotai/kimi-k2.5": "kilocode:moonshotai/kimi-k2.5+moonshot/int"
-  "moonshotai/kimi-k2.6": "kilocode:moonshotai/kimi-k2.6+moonshot/int"
+  "moonshotai/kimi-k2.5": "openrouter:moonshotai/kimi-k2.5"
+  "moonshotai/kimi-k2.6": "openrouter:moonshotai/kimi-k2.6"
+  "moonshotai/kimi-k2.5+moonshotai": "kilocode:moonshotai/kimi-k2.5+moonshot/int"
+  "moonshotai/kimi-k2.6+moonshotai": "kilocode:moonshotai/kimi-k2.6+moonshot/int"
+  "moonshotai/kimi-k2.5+bedrock": "kilocode:moonshotai/kimi-k2.5+bedrock"
+  "moonshotai/kimi-k2.6+bedrock": "kilocode:moonshotai/kimi-k2.6+bedrock"
+
   # DeepSeek
   "deepseek/deepseek-v3.2": "openrouter:deepseek/deepseek-v3.2"
   "deepseek/deepseek-v3.2-exp": "kilocode:deepseek/deepseek-v3.2-exp"
-  "deepseek/deepseek-v4-pro": "kilocode:deepseek/deepseek-v4-pro"
-  "deepseek/deepseek-v4-flash": "kilocode:deepseek/deepseek-v4-flash"
+
   # X-AI
-  "x-ai/grok-4.20-beta": "openrouter:x-ai/grok-4.20-beta"
+  "x-ai/grok-4.3": "kilocode:x-ai/grok-4.3"
+  "x-ai/grok-4.20": "openrouter:x-ai/grok-4.20"
   "x-ai/grok-4.1-fast": "openrouter:x-ai/grok-4.1-fast"
-  # MiniMax (pinned to minimax provider on OpenRouter)
-  "minimax/minimax-m2.7": "kilocode:minimax/minimax-m2.7+minimax"
-  "minimax/minimax-m2.5": "kilocode:minimax/minimax-m2.5+minimax"
+  "x-ai/grok-3-mini": "openrouter:x-ai/grok-3-mini"
+  # MiniMax
+  "minimax/minimax-m2.7": "openrouter:minimax/minimax-m2.7"
+  "minimax/minimax-m2.5": "openrouter:minimax/minimax-m2.5"
+  "minimax/minimax-m2.7+openrouter-minimax": "openrouter:minimax/minimax-m2.7+minimax"
+  "minimax/minimax-m2.5+openrouter-minimax": "openrouter:minimax/minimax-m2.5+minimax"
+
   # StepFun
   "stepfun/step-3.5-flash:free": "kilocode:stepfun/step-3.5-flash:free"
   # Arcee
@@ -116,10 +151,12 @@ model_mappings:
   # Amazon
   "amazon/nova-2-lite-v1": "kilocode:amazon/nova-2-lite-v1"
   # OpenRouter
-  "openrouter/free": "openrouter:free"
+  "openrouter/*": "openrouter:openrouter/*"
   # other
   "inclusionai/ling-2.6-flash:free": "kilocode:inclusionai/ling-2.6-flash:free"
   "tencent/hy3-preview:free": "kilocode:tencent/hy3-preview:free"
+  "poolside/laguna-m.1:free": "kilocode:poolside/laguna-m.1:free"
+  "poolside/laguna-xs.2:free": "kilocode:poolside/laguna-xs.2:free"
 
   # NVIDIA NIM (direct)
   # 01-ai
@@ -146,6 +183,8 @@ model_mappings:
   "nvidia/deepseek-ai/deepseek-v3.1": "nvidia:deepseek-ai/deepseek-v3.1"
   "nvidia/deepseek-ai/deepseek-v3.1-terminus": "nvidia:deepseek-ai/deepseek-v3.1-terminus"
   "nvidia/deepseek-ai/deepseek-v3.2": "nvidia:deepseek-ai/deepseek-v3.2"
+  "nvidia/deepseek-ai/deepseek-v4-flash": "nvidia:deepseek-ai/deepseek-v4-flash"
+  "nvidia/deepseek-ai/deepseek-v4-pro": "nvidia:deepseek-ai/deepseek-v4-pro"
   # Google (Gemma)
   "nvidia/google/codegemma-1.1-7b": "nvidia:google/codegemma-1.1-7b"
   "nvidia/google/gemma-2-27b-it": "nvidia:google/gemma-2-27b-it"
@@ -158,6 +197,7 @@ model_mappings:
   "nvidia/google/gemma-3n-e2b-it": "nvidia:google/gemma-3n-e2b-it"
   "nvidia/google/gemma-3n-e4b-it": "nvidia:google/gemma-3n-e4b-it"
   "nvidia/google/gemma-4-31b-it": "nvidia:google/gemma-4-31b-it"
+
   # GoTo Company
   "nvidia/gotocompany/gemma-2-9b-cpt-sahabatai-instruct": "nvidia:gotocompany/gemma-2-9b-cpt-sahabatai-instruct"
   # IBM (Granite)
@@ -206,6 +246,7 @@ model_mappings:
   "nvidia/microsoft/phi-4-multimodal-instruct": "nvidia:microsoft/phi-4-multimodal-instruct"
   # MiniMax
   "nvidia/minimaxai/minimax-m2.5": "nvidia:minimaxai/minimax-m2.5"
+  "nvidia/minimaxai/minimax-m2.7": "nvidia:minimaxai/minimax-m2.7"
   # Mistral AI
   "nvidia/mistralai/codestral-22b-instruct-v0.1": "nvidia:mistralai/codestral-22b-instruct-v0.1"
   "nvidia/mistralai/devstral-2-123b-instruct-2512": "nvidia:mistralai/devstral-2-123b-instruct-2512"
@@ -246,6 +287,7 @@ model_mappings:
   "nvidia/nvidia/llama3-chatqa-1.5-8b": "nvidia:nvidia/llama3-chatqa-1.5-8b"
   "nvidia/nvidia/mistral-nemo-minitron-8b-8k-instruct": "nvidia:nvidia/mistral-nemo-minitron-8b-8k-instruct"
   "nvidia/nvidia/nemotron-3-nano-30b-a3b": "nvidia:nvidia/nemotron-3-nano-30b-a3b"
+  "nvidia/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning": "nvidia:nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
   "nvidia/nvidia/nemotron-3-super-120b-a12b": "nvidia:nvidia/nemotron-3-super-120b-a12b"
   "nvidia/nvidia/nemotron-4-340b-instruct": "nvidia:nvidia/nemotron-4-340b-instruct"
   "nvidia/nvidia/nemotron-4-mini-hindi-4b-instruct": "nvidia:nvidia/nemotron-4-mini-hindi-4b-instruct"
@@ -253,9 +295,12 @@ model_mappings:
   "nvidia/nvidia/nemotron-nano-12b-v2-vl": "nvidia:nvidia/nemotron-nano-12b-v2-vl"
   "nvidia/nvidia/nemotron-nano-3-30b-a3b": "nvidia:nvidia/nemotron-nano-3-30b-a3b"
   "nvidia/nvidia/nvidia-nemotron-nano-9b-v2": "nvidia:nvidia/nvidia-nemotron-nano-9b-v2"
-  #  (open-source on NIM)
+  # OpenAI (open-source on NIM)
+  "openai/gpt-oss-120b+nim": "nvidia:openai/gpt-oss-120b"
+  "openai/gpt-oss-20b+nim": "nvidia:openai/gpt-oss-20b"
   "nvidia/openai/gpt-oss-120b": "nvidia:openai/gpt-oss-120b"
   "nvidia/openai/gpt-oss-20b": "nvidia:openai/gpt-oss-20b"
+
   # OpenGPT-X
   "nvidia/opengpt-x/teuken-7b-instruct-commercial-v0.4": "nvidia:opengpt-x/teuken-7b-instruct-commercial-v0.4"
   # Qwen
@@ -299,6 +344,7 @@ model_mappings:
   # Yen-Ting Lin
   "nvidia/yentinglin/llama-3-taiwan-70b-instruct": "nvidia:yentinglin/llama-3-taiwan-70b-instruct"
   # Z-AI (GLM)
+  "nvidia/z-ai/glm-5.1": "nvidia:z-ai/glm-5.1"
   "nvidia/z-ai/glm4.7": "nvidia:z-ai/glm4.7"
   "nvidia/z-ai/glm5": "nvidia:z-ai/glm5"
   # Zyphra

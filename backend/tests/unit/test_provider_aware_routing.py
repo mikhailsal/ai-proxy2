@@ -179,6 +179,18 @@ class TestResolveProviderAware:
         assert result.pinned_providers == ["google-ai-studio"]
         assert result.provider_aware_match is True
 
+    def test_direct_google_alias_routes_without_pinning(self):
+        registry = self._make_registry("google", "openrouter")
+        mappings = {
+            "google/gemma-4-31b-it+google-direct": "google:gemma-4-31b-it",
+        }
+        result = _resolve_provider_aware("google/gemma-4-31b-it", ["google-direct"], None, mappings, registry)
+        assert result is not None
+        assert result.provider_name == "google"
+        assert result.mapped_model == "gemma-4-31b-it"
+        assert result.pinned_providers is None
+        assert result.provider_aware_match is True
+
     def test_same_source_lists_not_duplicated(self):
         """When client_pinned == body_provider_slugs, only one pass is done."""
         registry = self._make_registry("openrouter")
@@ -328,6 +340,37 @@ async def test_provider_slug_renamed_in_forwarded_body(monkeypatch: pytest.Monke
     assert resp.status_code == 200
     assert adapter.last_request_body is not None
     assert adapter.last_request_body["provider"]["order"] == ["google-ai-studio"]
+
+
+@pytest.mark.asyncio
+async def test_direct_google_alias_routes_without_provider_order(monkeypatch: pytest.MonkeyPatch) -> None:
+    app = create_app()
+    transport = ASGITransport(app=app)
+
+    google_adapter = FakeAdapter()
+    openrouter_adapter = FakeAdapter()
+    mappings = {
+        "google/gemma-4-31b-it": "openrouter:google/gemma-4-31b-it",
+        "google/gemma-4-31b-it+google-direct": "google:gemma-4-31b-it",
+    }
+    registry = {"google": google_adapter, "openrouter": openrouter_adapter}
+    _setup_integration_test(monkeypatch, mappings, registry)
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/v1/chat/completions",
+            headers={"Authorization": "Bearer key"},
+            json={
+                "model": "google/gemma-4-31b-it+google-direct",
+                "messages": [{"role": "user", "content": "hi"}],
+            },
+        )
+
+    assert resp.status_code == 200
+    assert google_adapter.last_request_body is not None
+    assert google_adapter.last_request_body["model"] == "gemma-4-31b-it"
+    assert "provider" not in google_adapter.last_request_body
+    assert openrouter_adapter.last_request_body is None
 
 
 @pytest.mark.asyncio
