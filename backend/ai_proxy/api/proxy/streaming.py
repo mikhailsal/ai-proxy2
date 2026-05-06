@@ -1,5 +1,6 @@
 """Streaming helpers for proxy responses."""
 
+import asyncio
 import json
 import time
 import uuid
@@ -122,26 +123,30 @@ def build_streaming_response(
     streaming_headers.setdefault("X-Accel-Buffering", "no")
 
     async def stream_generator() -> AsyncGenerator[bytes, None]:
-        async for chunk_bytes in relay_stream_chunks(
-            upstream_stream,
-            state,
-            ai_proxy_route=client_route_identifier(route),
-            start_time=start_time,
-        ):
-            yield chunk_bytes
-        await enqueue_stream_log(
-            request=request,
-            request_id=request_id,
-            key_hash=key_hash,
-            sent_request_headers=sent_request_headers,
-            forward_body=forward_body,
-            route=route,
-            model_requested=model_requested,
-            start_time=start_time,
-            state=state,
-            client_request_body=client_request_body,
-            client_response_headers=streaming_headers,
-        )
+        try:
+            async for chunk_bytes in relay_stream_chunks(
+                upstream_stream,
+                state,
+                ai_proxy_route=client_route_identifier(route),
+                start_time=start_time,
+            ):
+                yield chunk_bytes
+        except asyncio.CancelledError:
+            logger.info("stream_client_disconnected", request_id=str(request_id))
+        finally:
+            await enqueue_stream_log(
+                request=request,
+                request_id=request_id,
+                key_hash=key_hash,
+                sent_request_headers=sent_request_headers,
+                forward_body=forward_body,
+                route=route,
+                model_requested=model_requested,
+                start_time=start_time,
+                state=state,
+                client_request_body=client_request_body,
+                client_response_headers=streaming_headers,
+            )
 
     return StreamingResponse(
         stream_generator(),
@@ -174,6 +179,9 @@ async def relay_stream_chunks(
             client_chunk = inject_ai_proxy_route_chunk(chunk_bytes, ai_proxy_route=ai_proxy_route)
             yield client_chunk
             capture_stream_chunk(state, client_chunk)
+    except asyncio.CancelledError:
+        record_stream_exception(state, "Client disconnected", 499)
+        raise
     except httpx.RequestError as error:
         status_code = 504 if isinstance(error, httpx.TimeoutException) else 502
         record_stream_exception(state, str(error), status_code)
