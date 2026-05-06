@@ -31,6 +31,7 @@ class StreamState:
     response_headers: dict[str, str] = field(default_factory=dict)
     response_status_code: int = 200
     stream_error_message: str | None = None
+    ttft_ms: float | None = None
 
     @property
     def full_content(self) -> str:
@@ -125,6 +126,7 @@ def build_streaming_response(
             upstream_stream,
             state,
             ai_proxy_route=client_route_identifier(route),
+            start_time=start_time,
         ):
             yield chunk_bytes
         await enqueue_stream_log(
@@ -154,6 +156,7 @@ async def relay_stream_chunks(
     state: StreamState,
     *,
     ai_proxy_route: str | None = None,
+    start_time: float | None = None,
 ) -> AsyncGenerator[bytes, None]:
     if upstream_stream.body is None:
         state.response_status_code = 502
@@ -162,8 +165,12 @@ async def relay_stream_chunks(
         yield stream_error_event(state.stream_error_message, ai_proxy_route=ai_proxy_route)
         return
 
+    first_chunk = True
     try:
         async for chunk_bytes in upstream_stream.body:
+            if first_chunk and start_time is not None:
+                state.ttft_ms = (time.monotonic() - start_time) * 1000
+                first_chunk = False
             client_chunk = inject_ai_proxy_route_chunk(chunk_bytes, ai_proxy_route=ai_proxy_route)
             yield client_chunk
             capture_stream_chunk(state, client_chunk)
@@ -323,6 +330,7 @@ async def enqueue_stream_log(
         model_resolved=route.mapped_model,
         provider_name=route.provider_name,
         latency_ms=latency,
+        ttft_ms=state.ttft_ms,
         response_status_code=state.response_status_code,
         response_headers=state.response_headers,
         client_response_headers=client_response_headers,

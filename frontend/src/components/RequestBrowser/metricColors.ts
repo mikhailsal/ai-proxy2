@@ -38,6 +38,19 @@ export function tpsColor(item: RequestSummary): string {
 }
 
 /**
+ * Time to First Token: shorter = better.
+ * <200ms fast (cool), 200ms-1s normal, >1s slow (warm), >3s hot.
+ */
+export function ttftColor(ttftMs: number | null): string {
+  if (ttftMs == null) return NEUTRAL;
+  const s = ttftMs / 1000;
+  if (s < 0.2) return lerpColor(COLD, DIM, s / 0.2);
+  if (s < 1) return NEUTRAL;
+  if (s < 3) return lerpColor(WARM, HOT, (s - 1) / 2);
+  return lerpColor(HOT, [200, 70, 70], clamp((s - 3) / 10, 0, 1));
+}
+
+/**
  * Duration: shorter = better.
  * <1s fast (cool), 1-5s normal, >5s slow (warm), >15s hot.
  */

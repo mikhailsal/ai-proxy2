@@ -37,6 +37,7 @@ function makeRequestSummary(overrides: Partial<RequestSummary> = {}): RequestSum
     model_resolved: overrides.model_resolved === undefined ? 'gpt-4o-mini' : overrides.model_resolved,
     response_status_code: overrides.response_status_code ?? 200,
     latency_ms: 'latency_ms' in overrides ? overrides.latency_ms! : 42,
+    ttft_ms: overrides.ttft_ms ?? null,
     input_tokens: 'input_tokens' in overrides ? overrides.input_tokens! : 1,
     output_tokens: 'output_tokens' in overrides ? overrides.output_tokens! : 2,
     total_tokens: overrides.total_tokens ?? 3,

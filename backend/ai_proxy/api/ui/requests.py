@@ -31,6 +31,7 @@ def _serialize_request(req: ProxyRequest) -> dict[str, Any]:
         "model_resolved": req.model_resolved,
         "response_status_code": req.response_status_code,
         "latency_ms": req.latency_ms,
+        "ttft_ms": req.ttft_ms,
         "input_tokens": req.input_tokens,
         "output_tokens": req.output_tokens,
         "total_tokens": req.total_tokens,

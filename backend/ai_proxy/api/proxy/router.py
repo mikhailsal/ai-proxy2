@@ -483,6 +483,7 @@ async def _enqueue_non_streaming_log(
         model_resolved=route.mapped_model,
         provider_name=route.provider_name,
         latency_ms=latency,
+        ttft_ms=latency,
         response_status_code=upstream_response.status_code,
         response_headers=upstream_response.headers,
         client_response_headers=client_response_headers,

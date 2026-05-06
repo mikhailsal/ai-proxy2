@@ -29,6 +29,7 @@ class LogEntry(BaseModel):
     model_resolved: str | None = None
     provider_name: str | None = None
     latency_ms: float | None = None
+    ttft_ms: float | None = None
     input_tokens: int | None = None
     output_tokens: int | None = None
     total_tokens: int | None = None
@@ -51,7 +52,8 @@ class LogEntry(BaseModel):
         model_resolved: str,
         provider_name: str,
         latency_ms: float,
-        response_status_code: int,
+        ttft_ms: float | None = None,
+        response_status_code: int = 200,
         client_request_body: dict[str, Any] | list[Any] | None = None,
         response_headers: dict[str, Any] | None = None,
         client_response_headers: dict[str, Any] | None = None,
@@ -84,6 +86,7 @@ class LogEntry(BaseModel):
             model_resolved=model_resolved,
             provider_name=provider_name,
             latency_ms=latency_ms,
+            ttft_ms=ttft_ms,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             total_tokens=total_tokens,

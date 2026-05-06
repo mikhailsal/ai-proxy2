@@ -71,6 +71,7 @@ class ProxyRequest(Base):
     model_resolved: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     provider_id: Mapped[int | None] = mapped_column(ForeignKey("providers.id"), nullable=True, index=True)
     latency_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ttft_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
     input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     total_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)

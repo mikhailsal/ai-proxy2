@@ -112,6 +112,7 @@ async def _write_batch(session_factory: async_sessionmaker[AsyncSession], entrie
                 model_resolved=entry.model_resolved,
                 provider_id=provider_id,
                 latency_ms=entry.latency_ms,
+                ttft_ms=entry.ttft_ms,
                 input_tokens=entry.input_tokens,
                 output_tokens=entry.output_tokens,
                 total_tokens=entry.total_tokens,

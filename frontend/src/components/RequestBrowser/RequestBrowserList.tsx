@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { RequestSummary } from '../../types';
-import { tpsColor, durationColor, costColor, cacheRatioColor, messageCountColor } from './metricColors';
+import { tpsColor, ttftColor, durationColor, costColor, cacheRatioColor, messageCountColor } from './metricColors';
 
 const STORAGE_KEY = 'ai-proxy-col-widths';
 
@@ -10,6 +10,7 @@ const DEFAULT_COL_WIDTHS = {
   model: 200,
   status: 46,
   latency: 64,
+  ttft: 56,
   tokens: 90,
   msgs: 38,
   tps: 48,
@@ -49,6 +50,11 @@ const COLUMN_DEFS: { key: ColKey; label: string; tooltip?: string }[] = [
     tooltip:
       'End-to-end proxy time: from request arrival through auth, routing, ' +
       'full upstream round-trip (or entire stream duration), to response completion.',
+  },
+  {
+    key: 'ttft',
+    label: 'TTFT',
+    tooltip: 'Time to First Token: elapsed time from request start to the first response token.',
   },
   { key: 'tokens', label: 'Tokens' },
   {
@@ -307,6 +313,7 @@ function RequestRow({ colWidths, item, isSelected, onSelect, virtualRow }: {
       <span style={{ ...colStyle('latency', colWidths), color: durationColor(item.latency_ms) }}>
         {item.latency_ms != null ? formatDuration(item.latency_ms) : '-'}
       </span>
+      <span style={{ ...colStyle('ttft', colWidths), ...dim, color: ttftColor(item.ttft_ms) }}>{item.ttft_ms != null ? formatDuration(item.ttft_ms) : '-'}</span>
       <span style={{ ...colStyle('tokens', colWidths), ...dim, color: cacheRatioColor(item) }}>{formatTokens(item)}</span>
       <span style={{ ...colStyle('msgs', colWidths), ...dim, color: messageCountColor(item.message_count) }}>
         {item.message_count ?? '-'}

@@ -9,6 +9,7 @@ export interface RequestSummary {
   model_resolved: string | null;
   response_status_code: number | null;
   latency_ms: number | null;
+  ttft_ms: number | null;
   input_tokens: number | null;
   output_tokens: number | null;
   total_tokens: number | null;

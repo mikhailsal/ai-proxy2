@@ -5,7 +5,7 @@ import type { HighlightRule } from '../JsonViewer/JsonViewer';
 import { JsonViewer } from '../JsonViewer/JsonViewer';
 import { DiffJsonViewer } from '../JsonViewer/DiffJsonViewer';
 import type { RequestDetail as RequestDetailType, RequestSummary } from '../../types';
-import { tpsColor, durationColor, costColor, cacheRatioColor, messageCountColor } from '../RequestBrowser/metricColors';
+import { tpsColor, ttftColor, durationColor, costColor, cacheRatioColor, messageCountColor } from '../RequestBrowser/metricColors';
 import {
   buildResponseHighlightRules,
   buildTokenEstimateRules,
@@ -235,6 +235,7 @@ function RequestDetailMetaRow({
   return (
     <div style={styles.metaRow}>
       <MetaBadge label="Duration" value={request?.latency_ms != null ? formatDetailDuration(request.latency_ms) : '-'} valueColor={durationColor(request?.latency_ms ?? null)} />
+      <MetaBadge label="TTFT" value={request?.ttft_ms != null ? formatDetailDuration(request.ttft_ms) : '-'} valueColor={ttftColor(request?.ttft_ms ?? null)} />
       <MetaBadge label="TPS" value={tpsVal} valueColor={summary ? tpsColor(summary) : undefined} />
       <MetaBadge label="In" value={String(request?.input_tokens ?? '-')} />
       <MetaBadge label="Out" value={String(request?.output_tokens ?? '-')} />

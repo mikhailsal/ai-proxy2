@@ -27,6 +27,7 @@ def make_request_record(**overrides: object) -> SimpleNamespace:
         "model_resolved": "mapped-model",
         "response_status_code": 200,
         "latency_ms": 123.4,
+        "ttft_ms": 50.2,
         "input_tokens": 1,
         "output_tokens": 2,
         "total_tokens": 3,

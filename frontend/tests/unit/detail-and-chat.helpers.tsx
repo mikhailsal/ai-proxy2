@@ -25,6 +25,7 @@ export function makeRequestSummary(overrides: Partial<RequestSummary>): RequestS
     model_resolved: overrides.model_resolved ?? 'gpt-4o-mini',
     response_status_code: overrides.response_status_code ?? 200,
     latency_ms: overrides.latency_ms ?? 42,
+    ttft_ms: overrides.ttft_ms ?? null,
     input_tokens: 1,
     output_tokens: 2,
     total_tokens: 3,
