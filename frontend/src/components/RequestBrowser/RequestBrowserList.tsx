@@ -65,7 +65,7 @@ const COLUMN_DEFS: { key: ColKey; label: string; tooltip?: string }[] = [
   {
     key: 'tps',
     label: 'TPS',
-    tooltip: 'Tokens per second: output tokens divided by request duration.',
+    tooltip: 'Tokens per second: output tokens divided by generation time (duration minus TTFT).',
   },
   { key: 'cost', label: 'Cost' },
   { key: 'userMsg', label: 'User Message' },
@@ -318,7 +318,7 @@ function RequestRow({ colWidths, item, isSelected, onSelect, virtualRow }: {
       <span style={{ ...colStyle('msgs', colWidths), ...dim, color: messageCountColor(item.message_count) }}>
         {item.message_count ?? '-'}
       </span>
-      <span style={{ ...colStyle('tps', colWidths), ...dim, color: tpsColor(item) }}>{formatTps(item)}</span>
+      <span style={{ ...colStyle('tps', colWidths), ...dim, color: tpsColor(item.tps) }}>{formatTps(item.tps)}</span>
       <span style={{ ...colStyle('cost', colWidths), ...dim, color: costColor(item.cost) }}>{formatCost(item.cost)}</span>
       <span style={{ ...colStyle('userMsg', colWidths), ...styles.ellipsis, ...dim }} title={item.last_user_message ?? undefined}>
         {item.last_user_message ?? '-'}
@@ -369,11 +369,8 @@ function formatTokens(item: RequestSummary): string {
 }
 
 // eslint-disable-next-line react-refresh/only-export-components
-export function formatTps(item: RequestSummary): string {
-  const tokens = item.output_tokens;
-  const ms = item.latency_ms;
-  if (tokens == null || tokens === 0 || ms == null || ms <= 0) return '-';
-  const tps = tokens / (ms / 1000);
+export function formatTps(tps: number | null): string {
+  if (tps == null || tps <= 0) return '-';
   return tps < 10 ? tps.toFixed(1) : Math.round(tps).toString();
 }
 

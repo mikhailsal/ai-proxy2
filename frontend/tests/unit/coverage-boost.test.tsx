@@ -38,6 +38,7 @@ function makeRequestSummary(overrides: Partial<RequestSummary> = {}): RequestSum
     response_status_code: overrides.response_status_code ?? 200,
     latency_ms: 'latency_ms' in overrides ? overrides.latency_ms! : 42,
     ttft_ms: overrides.ttft_ms ?? null,
+    tps: 'tps' in overrides ? overrides.tps! : null,
     input_tokens: 'input_tokens' in overrides ? overrides.input_tokens! : 1,
     output_tokens: 'output_tokens' in overrides ? overrides.output_tokens! : 2,
     total_tokens: overrides.total_tokens ?? 3,

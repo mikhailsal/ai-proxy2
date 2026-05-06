@@ -27,11 +27,8 @@ const DIM: [number, number, number] = [139, 148, 158];
  * TPS: higher = better (faster generation).
  * <15 = slow (warm/red), 15-50 = normal, >50 = fast (cool/blue).
  */
-export function tpsColor(item: RequestSummary): string {
-  const tokens = item.output_tokens;
-  const ms = item.latency_ms;
-  if (tokens == null || tokens === 0 || ms == null || ms <= 0) return NEUTRAL;
-  const tps = tokens / (ms / 1000);
+export function tpsColor(tps: number | null): string {
+  if (tps == null || tps <= 0) return NEUTRAL;
   if (tps < 15) return lerpColor(HOT, WARM, tps / 15);
   if (tps < 50) return NEUTRAL;
   return lerpColor(COLD, [100, 200, 230], clamp((tps - 50) / 50, 0, 1));

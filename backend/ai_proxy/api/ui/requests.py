@@ -18,6 +18,22 @@ router = APIRouter(dependencies=[Depends(require_ui_auth)])
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
 
+def _compute_tps(req: ProxyRequest) -> float | None:
+    """Tokens per second: output tokens / generation time (latency minus TTFT)."""
+    tokens = req.output_tokens
+    latency = req.latency_ms
+    if tokens is None or tokens <= 0 or latency is None or latency <= 0:
+        return None
+    ttft = req.ttft_ms
+    if ttft is not None and ttft > 0:
+        gen_ms = latency - ttft
+        if gen_ms <= 0:
+            return None
+    else:
+        gen_ms = latency
+    return tokens / (gen_ms / 1000)
+
+
 def _serialize_request(req: ProxyRequest) -> dict[str, Any]:
     normalized_cost = _extract_cost(req)
     return {
@@ -32,6 +48,7 @@ def _serialize_request(req: ProxyRequest) -> dict[str, Any]:
         "response_status_code": req.response_status_code,
         "latency_ms": req.latency_ms,
         "ttft_ms": req.ttft_ms,
+        "tps": _compute_tps(req),
         "input_tokens": req.input_tokens,
         "output_tokens": req.output_tokens,
         "total_tokens": req.total_tokens,

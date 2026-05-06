@@ -362,32 +362,26 @@ describe('compactNumber', () => {
 });
 
 describe('formatTps', () => {
-  it('returns dash when output_tokens is missing', () => {
-    expect(formatTps(makeRequestSummary({ output_tokens: null, latency_ms: 1000 }))).toBe('-');
+  it('returns dash for null', () => {
+    expect(formatTps(null)).toBe('-');
   });
 
-  it('returns dash when latency_ms is missing', () => {
-    expect(formatTps(makeRequestSummary({ output_tokens: 100, latency_ms: null }))).toBe('-');
+  it('returns dash for zero', () => {
+    expect(formatTps(0)).toBe('-');
   });
 
-  it('returns dash when output_tokens is zero', () => {
-    expect(formatTps(makeRequestSummary({ output_tokens: 0, latency_ms: 1000 }))).toBe('-');
-  });
-
-  it('calculates TPS correctly for slow generation', () => {
-    expect(formatTps(makeRequestSummary({ output_tokens: 5, latency_ms: 1000 }))).toBe('5.0');
-  });
-
-  it('calculates TPS correctly for fast generation', () => {
-    expect(formatTps(makeRequestSummary({ output_tokens: 500, latency_ms: 2000 }))).toBe('250');
+  it('returns dash for negative value', () => {
+    expect(formatTps(-5)).toBe('-');
   });
 
   it('shows one decimal for TPS under 10', () => {
-    expect(formatTps(makeRequestSummary({ output_tokens: 15, latency_ms: 2000 }))).toBe('7.5');
+    expect(formatTps(5.0)).toBe('5.0');
+    expect(formatTps(7.5)).toBe('7.5');
   });
 
   it('rounds for TPS >= 10', () => {
-    expect(formatTps(makeRequestSummary({ output_tokens: 100, latency_ms: 1000 }))).toBe('100');
+    expect(formatTps(100)).toBe('100');
+    expect(formatTps(250)).toBe('250');
   });
 });
 
@@ -404,6 +398,7 @@ function makeRequestSummary(overrides: Partial<RequestSummary>): RequestSummary 
     response_status_code: overrides.response_status_code ?? 200,
     latency_ms: 'latency_ms' in overrides ? overrides.latency_ms! : 42,
     ttft_ms: overrides.ttft_ms ?? null,
+    tps: 'tps' in overrides ? overrides.tps! : null,
     input_tokens: 'input_tokens' in overrides ? overrides.input_tokens! : 1,
     output_tokens: 'output_tokens' in overrides ? overrides.output_tokens! : 2,
     total_tokens: overrides.total_tokens ?? 3,

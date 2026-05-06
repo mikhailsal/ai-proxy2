@@ -44,3 +44,32 @@ def test_serialize_request_uses_nested_cost_details_and_market_cost() -> None:
 
     assert requests._serialize_request(nested_cost_details)["cost"] == 0.001451625
     assert requests._serialize_request(market_cost)["cost"] == 0.125
+
+
+def test_compute_tps_subtracts_ttft() -> None:
+    record = make_request_record(output_tokens=100, latency_ms=2000, ttft_ms=500)
+    tps = requests._compute_tps(record)
+    assert tps is not None
+    assert abs(tps - 100 / 1.5) < 0.01
+
+    record_no_ttft = make_request_record(output_tokens=100, latency_ms=2000, ttft_ms=None)
+    tps_fallback = requests._compute_tps(record_no_ttft)
+    assert tps_fallback is not None
+    assert abs(tps_fallback - 50.0) < 0.01
+
+    assert requests._compute_tps(make_request_record(output_tokens=None, latency_ms=2000)) is None
+    assert requests._compute_tps(make_request_record(output_tokens=0, latency_ms=2000)) is None
+    assert requests._compute_tps(make_request_record(output_tokens=100, latency_ms=None)) is None
+    assert requests._compute_tps(make_request_record(output_tokens=100, latency_ms=0)) is None
+    assert requests._compute_tps(make_request_record(output_tokens=100, latency_ms=500, ttft_ms=500)) is None
+    assert requests._compute_tps(make_request_record(output_tokens=100, latency_ms=500, ttft_ms=600)) is None
+
+
+def test_serialize_request_includes_tps() -> None:
+    record = make_request_record(output_tokens=100, latency_ms=2000, ttft_ms=500)
+    result = requests._serialize_request(record)
+    assert result["tps"] is not None
+    assert abs(result["tps"] - 100 / 1.5) < 0.01
+
+    record_no_tokens = make_request_record(output_tokens=None, latency_ms=2000)
+    assert requests._serialize_request(record_no_tokens)["tps"] is None

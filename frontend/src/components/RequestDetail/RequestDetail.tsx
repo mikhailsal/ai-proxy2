@@ -143,12 +143,8 @@ function ExportButton({
   );
 }
 
-function computeTps(request: RequestSummary | RequestDetailType | null): string {
-  if (!request) return '-';
-  const tokens = request.output_tokens;
-  const ms = request.latency_ms;
-  if (tokens == null || tokens === 0 || ms == null || ms <= 0) return '-';
-  const tps = tokens / (ms / 1000);
+function formatTps(tps: number | null): string {
+  if (tps == null || tps <= 0) return '-';
   return tps < 10 ? tps.toFixed(1) : Math.round(tps).toString();
 }
 
@@ -228,7 +224,7 @@ function RequestDetailMetaRow({
     ? `${cachedTokens}/${inputTokens} (${Math.round((cachedTokens / inputTokens) * 100)}%)`
     : null;
 
-  const tpsVal = computeTps(request);
+  const tpsVal = request?.tps ?? null;
   const summary = request as RequestSummary | null;
   const displayCost = resolveDisplayedCost(request);
 
@@ -236,7 +232,7 @@ function RequestDetailMetaRow({
     <div style={styles.metaRow}>
       <MetaBadge label="Duration" value={request?.latency_ms != null ? formatDetailDuration(request.latency_ms) : '-'} valueColor={durationColor(request?.latency_ms ?? null)} />
       <MetaBadge label="TTFT" value={request?.ttft_ms != null ? formatDetailDuration(request.ttft_ms) : '-'} valueColor={ttftColor(request?.ttft_ms ?? null)} />
-      <MetaBadge label="TPS" value={tpsVal} valueColor={summary ? tpsColor(summary) : undefined} />
+      <MetaBadge label="TPS" value={formatTps(tpsVal)} valueColor={tpsColor(tpsVal)} />
       <MetaBadge label="In" value={String(request?.input_tokens ?? '-')} />
       <MetaBadge label="Out" value={String(request?.output_tokens ?? '-')} />
       <MetaBadge label="Total" value={String(request?.total_tokens ?? '-')} />
