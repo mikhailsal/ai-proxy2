@@ -15,6 +15,20 @@ logger = structlog.get_logger()
 
 _GOOGLE_THOUGHT_INCLUDE_MARKERS = ("thought", "reasoning")
 
+_GOOGLE_UNSUPPORTED_PARAMS = frozenset(
+    {
+        "frequency_penalty",
+        "logit_bias",
+        "logprobs",
+        "min_p",
+        "presence_penalty",
+        "repetition_penalty",
+        "seed",
+        "top_a",
+        "top_k",
+        "top_logprobs",
+    }
+)
 
 _STRIPPED_REQUEST_HEADERS = {
     "accept-encoding",
@@ -44,6 +58,8 @@ class OpenAICompatAdapter(BaseAdapter):
 
         prepared = copy.deepcopy(request_body)
         prepared.pop("provider", None)
+        for param in _GOOGLE_UNSUPPORTED_PARAMS:
+            prepared.pop(param, None)
 
         include = prepared.pop("include", None)
         if _google_include_requests_thoughts(include):

@@ -50,6 +50,8 @@ async def test_google_chat_completions_strip_openrouter_only_fields(monkeypatch:
         "reasoning": {"effort": "none"},
         "stream": True,
         "temperature": 1.2,
+        "repetition_penalty": 1.15,
+        "min_p": 0.05,
     }
     _install_fake_async_client(monkeypatch, calls)
 
@@ -77,6 +79,59 @@ async def test_google_chat_completions_strip_openrouter_only_fields(monkeypatch:
     assert request_body["provider"]["order"] == ["ai-studio"]
     assert request_body["include"] == ["usage"]
     assert request_body["reasoning"] == {"effort": "none"}
+    assert request_body["repetition_penalty"] == 1.15
+    assert request_body["min_p"] == 0.05
+
+
+@pytest.mark.asyncio
+async def test_google_chat_completions_strip_unsupported_sampling_params(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: dict = {}
+    request_body = {
+        "model": "gemini-2.5-flash-lite",
+        "messages": [{"role": "user", "content": "hi"}],
+        "temperature": 0.8,
+        "top_p": 0.9,
+        "max_tokens": 100,
+        "stop": ["bye"],
+        "n": 1,
+        "user": "tester",
+        "response_format": {"type": "json_object"},
+        "repetition_penalty": 1.2,
+        "frequency_penalty": 0.3,
+        "presence_penalty": 0.3,
+        "min_p": 0.1,
+        "top_k": 40,
+        "top_a": 0.5,
+        "logit_bias": {123: 1.0},
+        "logprobs": True,
+        "top_logprobs": 3,
+        "seed": 42,
+    }
+    _install_fake_async_client(monkeypatch, calls)
+
+    response = await _google_adapter().chat_completions(request_body, {})
+
+    sent_json = calls["requests"][0]["json"]
+    assert sent_json == {
+        "model": "gemini-2.5-flash-lite",
+        "messages": [{"role": "user", "content": "hi"}],
+        "temperature": 0.8,
+        "top_p": 0.9,
+        "max_tokens": 100,
+        "stop": ["bye"],
+        "n": 1,
+        "user": "tester",
+        "response_format": {"type": "json_object"},
+    }
+    assert response.sent_request_body == sent_json
+    assert request_body["repetition_penalty"] == 1.2
+    assert request_body["frequency_penalty"] == 0.3
+    assert request_body["min_p"] == 0.1
+    assert request_body["top_k"] == 40
+    assert request_body["top_a"] == 0.5
+    assert request_body["logprobs"] is True
+    assert request_body["top_logprobs"] == 3
+    assert request_body["seed"] == 42
 
 
 @pytest.mark.asyncio
