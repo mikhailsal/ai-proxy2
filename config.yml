@@ -22,6 +22,10 @@ providers:
     type: openai_compatible
     endpoint: https://generativelanguage.googleapis.com/v1beta/openai
     api_key_env: GEMINI_API_KEY
+  fireworks:
+    type: openai_compatible
+    endpoint: https://api.fireworks.ai/inference/v1
+    api_key_env: FIREWORKS_API_KEY
 # Model mappings: client-facing model name -> provider:actual_model
 # Explicit entries are visible in /v1/models. The "*" wildcard is a fallback.
 model_mappings:
@@ -157,6 +161,14 @@ model_mappings:
   "tencent/hy3-preview:free": "kilocode:tencent/hy3-preview:free"
   "poolside/laguna-m.1:free": "kilocode:poolside/laguna-m.1:free"
   "poolside/laguna-xs.2:free": "kilocode:poolside/laguna-xs.2:free"
+
+  # Fireworks (direct)
+  "deepseek/deepseek-v4-pro+fireworks": "fireworks:accounts/fireworks/models/deepseek-v4-pro"
+  "z-ai/glm-5+fireworks": "fireworks:accounts/fireworks/models/glm-5"
+  "z-ai/glm-5p1+fireworks": "fireworks:accounts/fireworks/models/glm-5p1"
+  "moonshotai/kimi-k2p5+fireworks": "fireworks:accounts/fireworks/models/kimi-k2p5"
+  "moonshotai/kimi-k2p6+fireworks": "fireworks:accounts/fireworks/models/kimi-k2p6"
+  "minimax/minimax-m2p7+fireworks": "fireworks:accounts/fireworks/models/minimax-m2p7"
 
   # NVIDIA NIM (direct)
   # 01-ai

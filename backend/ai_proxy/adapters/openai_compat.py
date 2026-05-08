@@ -30,6 +30,14 @@ _GOOGLE_UNSUPPORTED_PARAMS = frozenset(
     }
 )
 
+_FIREWORKS_UNSUPPORTED_PARAMS = frozenset(
+    {
+        "top_a",
+    }
+)
+
+_FIREWORKS_MODEL_PREFIX = "accounts/fireworks/models/"
+
 _STRIPPED_REQUEST_HEADERS = {
     "accept-encoding",
     "authorization",
@@ -53,6 +61,8 @@ _STRIPPED_REQUEST_HEADERS = {
 
 class OpenAICompatAdapter(BaseAdapter):
     def _prepare_request_body(self, request_body: dict[str, Any]) -> dict[str, Any]:
+        if self.provider_name == "fireworks":
+            return self._prepare_fireworks_body(request_body)
         if self.provider_name != "google":
             return request_body
 
@@ -71,9 +81,6 @@ class OpenAICompatAdapter(BaseAdapter):
         standard_reasoning_effort = _extract_google_reasoning_effort(reasoning, reasoning_effort)
         if standard_reasoning_effort and not _google_has_explicit_thinking_level(prepared):
             if _google_is_gemma_thinking_toggle_model(prepared.get("model")):
-                # Google-hosted Gemma 4 exposes reasoning as an on/off toggle via thinking_level.
-                # `minimal` is the effective "off" position, while any enabled standard effort
-                # level must be coerced to `high` because intermediate values like `low` are rejected.
                 thinking_config = _ensure_google_thinking_config(prepared)
                 thinking_config["thinking_level"] = _map_google_gemma_reasoning_effort(standard_reasoning_effort)
             elif _google_supports_reasoning_effort(prepared.get("model")):
@@ -85,6 +92,26 @@ class OpenAICompatAdapter(BaseAdapter):
                 stream_options = {}
                 prepared["stream_options"] = stream_options
             stream_options.setdefault("include_usage", True)
+
+        return prepared
+
+    def _prepare_fireworks_body(self, request_body: dict[str, Any]) -> dict[str, Any]:
+        prepared = copy.deepcopy(request_body)
+        prepared.pop("provider", None)
+        prepared.pop("include", None)
+
+        for param in _FIREWORKS_UNSUPPORTED_PARAMS:
+            prepared.pop(param, None)
+
+        model = prepared.get("model")
+        if isinstance(model, str) and not model.startswith(_FIREWORKS_MODEL_PREFIX):
+            prepared["model"] = f"{_FIREWORKS_MODEL_PREFIX}{model}"
+
+        reasoning = prepared.pop("reasoning", None)
+        if isinstance(reasoning, dict):
+            effort = reasoning.get("effort")
+            if isinstance(effort, str) and effort and "reasoning_effort" not in prepared:
+                prepared["reasoning_effort"] = effort.lower()
 
         return prepared
 
