@@ -204,3 +204,46 @@ async def test_non_streaming_transport_errors_become_gateway_failures(
         "ai_proxy_route": "openrouter:provider-model",
     }
     assert entry.client_response_headers == {"content-type": "application/json"}
+
+
+@pytest.mark.asyncio
+async def test_non_streaming_ttft_is_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """TTFT is a streaming-only metric; non-streaming requests must log ttft_ms=None."""
+    app = create_app()
+    transport = ASGITransport(app=app)
+
+    adapter = FakeAdapter(
+        response=ProviderResponse(
+            status_code=200,
+            headers={"content-type": "application/json"},
+            body=b'{"choices":[{"message":{"role":"assistant","content":"hi"}}],'
+            b'"usage":{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8}}',
+            content_type="application/json",
+        )
+    )
+    route = SimpleNamespace(provider_name="openrouter", mapped_model="provider-model", adapter=adapter)
+    logged_entries = []
+
+    async def capture_log(entry):
+        logged_entries.append(entry)
+
+    monkeypatch.setattr(proxy_router, "get_app_config", _default_config)
+    monkeypatch.setattr(proxy_router, "check_model_access", lambda *_args: (True, ""))
+    monkeypatch.setattr(proxy_router, "apply_modifications", lambda body, headers, *_args: (body, headers))
+    monkeypatch.setattr(proxy_router, "resolve_model", lambda _model, **_kw: route)
+    monkeypatch.setattr(proxy_router, "enqueue_log", capture_log)
+    monkeypatch.setattr(proxy_router, "resolve_provider_key", lambda *_args, **_kw: None)
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            headers={"Authorization": "Bearer proxy-key"},
+            json={"model": "gpt-4o-mini", "messages": [{"role": "user", "content": "hello"}]},
+        )
+
+    assert response.status_code == 200
+    entry = logged_entries[0]
+    assert entry.latency_ms is not None and entry.latency_ms > 0
+    assert entry.ttft_ms is None
