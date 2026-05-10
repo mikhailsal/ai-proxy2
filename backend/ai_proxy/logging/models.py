@@ -18,7 +18,9 @@ class LogEntry(BaseModel):
     request_headers: dict[str, Any] | None = None
     client_request_headers: dict[str, Any] | None = None
     request_body: dict[str, Any] | list[Any] | None = None
+    request_body_raw: str | None = None
     client_request_body: dict[str, Any] | list[Any] | None = None
+    client_request_body_raw: str | None = None
     response_status_code: int | None = None
     response_headers: dict[str, Any] | None = None
     client_response_headers: dict[str, Any] | None = None
@@ -48,6 +50,7 @@ class LogEntry(BaseModel):
         client_api_key_hash: str,
         request_headers: dict[str, Any] | None = None,
         request_body: dict[str, Any] | list[Any] | None,
+        request_body_raw: str | None = None,
         model_requested: str,
         model_resolved: str,
         provider_name: str,
@@ -55,6 +58,7 @@ class LogEntry(BaseModel):
         ttft_ms: float | None = None,
         response_status_code: int = 200,
         client_request_body: dict[str, Any] | list[Any] | None = None,
+        client_request_body_raw: str | None = None,
         response_headers: dict[str, Any] | None = None,
         client_response_headers: dict[str, Any] | None = None,
         response_body: dict[str, Any] | list[Any] | None = None,
@@ -75,7 +79,9 @@ class LogEntry(BaseModel):
             request_headers=request_headers,
             client_request_headers=dict(request.headers),
             request_body=request_body,
+            request_body_raw=request_body_raw,
             client_request_body=client_request_body,
+            client_request_body_raw=client_request_body_raw,
             response_status_code=response_status_code,
             response_headers=response_headers,
             client_response_headers=client_response_headers,

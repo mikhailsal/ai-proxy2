@@ -99,7 +99,9 @@ async def _write_batch(session_factory: async_sessionmaker[AsyncSession], entrie
                 if entry.client_request_headers
                 else None,
                 request_body=mask_sensitive_fields(entry.request_body),
+                request_body_raw=entry.request_body_raw,
                 client_request_body=mask_sensitive_fields(entry.client_request_body),
+                client_request_body_raw=entry.client_request_body_raw,
                 response_status_code=entry.response_status_code,
                 response_headers=mask_headers(entry.response_headers) if entry.response_headers else None,
                 client_response_headers=mask_headers(entry.client_response_headers)

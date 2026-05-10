@@ -72,11 +72,15 @@ async def test_create_request_and_get_request() -> None:
         path="/v1/chat/completions",
         method="POST",
         request_body={"messages": []},
+        request_body_raw='{"messages":[]}',
+        client_request_body_raw='{"model":"gpt-4o-mini","messages":[]}',
     )
     found = await req_repo.get_request(session, existing.id)
 
     assert isinstance(created, ProxyRequest)
     assert created.path == "/v1/chat/completions"
+    assert created.request_body_raw == '{"messages":[]}'
+    assert created.client_request_body_raw == '{"model":"gpt-4o-mini","messages":[]}'
     assert session.added == [created]
     assert session.commit_calls == 1
     assert session.refreshed == [created]

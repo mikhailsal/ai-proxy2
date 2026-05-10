@@ -9,6 +9,7 @@ import httpx
 import structlog
 
 from ai_proxy.adapters.base import BaseAdapter, ProviderResponse, ProviderStreamResponse
+from ai_proxy.core.json_ordering import serialize_json_value
 from ai_proxy.types import JsonObject
 
 logger = structlog.get_logger()
@@ -131,8 +132,9 @@ class OpenAICompatAdapter(BaseAdapter):
         url = f"{self.endpoint_url}/chat/completions"
         req_headers = self._build_headers(headers, override_api_key=override_api_key)
         prepared_body = self._prepare_request_body(request_body)
+        prepared_body_raw = serialize_json_value(prepared_body)
         async with httpx.AsyncClient(timeout=self.timeout) as client:
-            resp = await client.post(url, json=prepared_body, headers=req_headers)
+            resp = await client.post(url, content=prepared_body_raw.encode("utf-8"), headers=req_headers)
             return ProviderResponse(
                 status_code=resp.status_code,
                 headers=dict(resp.headers),
@@ -140,6 +142,7 @@ class OpenAICompatAdapter(BaseAdapter):
                 content_type=resp.headers.get("content-type"),
                 sent_request_headers=req_headers,
                 sent_request_body=prepared_body,
+                sent_request_body_raw=prepared_body_raw,
             )
 
     async def stream_chat_completions(
@@ -148,8 +151,9 @@ class OpenAICompatAdapter(BaseAdapter):
         url = f"{self.endpoint_url}/chat/completions"
         req_headers = self._build_headers(headers, override_api_key=override_api_key)
         prepared_body = self._prepare_request_body(request_body)
+        prepared_body_raw = serialize_json_value(prepared_body)
         client = httpx.AsyncClient(timeout=self.timeout)
-        response_context = client.stream("POST", url, json=prepared_body, headers=req_headers)
+        response_context = client.stream("POST", url, content=prepared_body_raw.encode("utf-8"), headers=req_headers)
 
         try:
             resp = await response_context.__aenter__()
@@ -168,6 +172,7 @@ class OpenAICompatAdapter(BaseAdapter):
                 error_body=body,
                 sent_request_headers=req_headers,
                 sent_request_body=prepared_body,
+                sent_request_body_raw=prepared_body_raw,
             )
 
         async def body_iterator() -> AsyncGenerator[bytes, None]:
@@ -188,6 +193,7 @@ class OpenAICompatAdapter(BaseAdapter):
             body=body_iterator(),
             sent_request_headers=req_headers,
             sent_request_body=prepared_body,
+            sent_request_body_raw=prepared_body_raw,
         )
 
     async def list_models(self) -> list[JsonObject]:

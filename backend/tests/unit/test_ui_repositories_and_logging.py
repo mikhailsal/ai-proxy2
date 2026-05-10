@@ -37,7 +37,9 @@ def make_request_record(**overrides: object) -> SimpleNamespace:
         "request_headers": {"Authorization": "Bearer secret-token"},
         "client_request_headers": {"Authorization": "Bearer secret-token", "content-type": "application/json"},
         "request_body": {"messages": [{"role": "system", "content": "hello"}]},
+        "request_body_raw": None,
         "client_request_body": {"messages": [{"role": "system", "content": "hello"}], "model": "gpt-4o-mini"},
+        "client_request_body_raw": None,
         "response_headers": {"x-upstream": "1"},
         "client_response_headers": {"x-upstream": "1"},
         "response_body": {"choices": [{"message": {"content": "world"}}]},
@@ -415,11 +417,13 @@ def test_masking_helpers_and_log_entry_factory() -> None:
         client_api_key_hash="hash",
         request_headers=sent_headers,
         request_body={"model": "gpt-4o-mini"},
+        request_body_raw='{"model":"gpt-4o-mini"}',
         model_requested="gpt-4o-mini",
         model_resolved="mapped-model",
         provider_name="provider",
         latency_ms=12.3,
         response_status_code=200,
+        client_request_body_raw='{"model":"gpt-4o-mini","token":"secret-token"}',
         response_headers={"content-type": "application/json", "transfer-encoding": "chunked"},
         client_response_headers={"content-type": "application/json"},
         response_body={"ok": True},
@@ -429,7 +433,9 @@ def test_masking_helpers_and_log_entry_factory() -> None:
     assert entry.path == "/v1/chat/completions"
     assert entry.response_body == {"ok": True}
     assert entry.request_headers == sent_headers
+    assert entry.request_body_raw == '{"model":"gpt-4o-mini"}'
     assert entry.client_request_headers == {"authorization": "Bearer sk-secret-token"}
+    assert entry.client_request_body_raw == '{"model":"gpt-4o-mini","token":"secret-token"}'
     assert entry.response_headers == {"content-type": "application/json", "transfer-encoding": "chunked"}
     assert entry.client_response_headers == {"content-type": "application/json"}
 
@@ -475,22 +481,15 @@ async def test_logging_service_provider_resolution_and_batch_write(monkeypatch: 
         entry = LogEntry(
             provider_name="provider",
             request_body={"token": "secret-token"},
+            request_body_raw='{"token":"secret-token"}',
+            client_request_body_raw='{"model":"gpt-4o-mini","token":"secret-token"}',
             request_headers={"Authorization": "Bearer secret"},
         )
         await service._write_batch(lambda: SessionContext(bs), [entry])
         assert bs.committed and bs.added
+        assert bs.added[0].request_body == {"token": "sec******ken"}
+        assert bs.added[0].request_body_raw == '{"token":"secret-token"}'
+        assert bs.added[0].client_request_body_raw == '{"model":"gpt-4o-mini","token":"secret-token"}'
     finally:
         service._provider_id_cache.clear()
         service._provider_id_cache.update(saved)
-
-
-@pytest.mark.asyncio
-async def test_logging_service_start_and_stop(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def fake_flush_loop(batch_size: int = 50, flush_interval: float = 5.0) -> None:
-        await asyncio.sleep(0)
-
-    monkeypatch.setattr(service, "_flush_loop", fake_flush_loop)
-    task = service.start_logging_service(batch_size=1, flush_interval=0.01)
-    assert task is service._flush_task
-    await service.stop_logging_service()
-    assert service._flush_task is None

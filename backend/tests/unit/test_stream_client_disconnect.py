@@ -104,6 +104,7 @@ async def test_build_streaming_response_logs_on_client_disconnect(
         key_hash="hash",
         sent_request_headers=None,
         forward_body={"model": "provider-model"},
+        forward_body_raw='{"model":"provider-model"}',
         route=SimpleNamespace(provider_name="provider", mapped_model="mapped-model"),
         model_requested="gpt-4o-mini",
         start_time=0.0,

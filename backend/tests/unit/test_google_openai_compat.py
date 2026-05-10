@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import ClassVar
 
 import pytest
@@ -31,8 +32,8 @@ def _install_fake_async_client(monkeypatch: pytest.MonkeyPatch, calls: dict) -> 
         async def __aexit__(self, exc_type, exc, tb) -> None:
             return None
 
-        async def post(self, url: str, json: dict, headers: dict[str, str]) -> FakeResponse:
-            request = {"url": url, "json": json, "headers": headers}
+        async def post(self, url: str, content: bytes, headers: dict[str, str]) -> FakeResponse:
+            request = {"url": url, "json": json.loads(content), "raw": content.decode("utf-8"), "headers": headers}
             calls.setdefault("requests", []).append(request)
             return FakeResponse()
 
@@ -57,25 +58,22 @@ async def test_google_chat_completions_strip_openrouter_only_fields(monkeypatch:
 
     response = await _google_adapter().chat_completions(request_body, {})
 
-    assert calls["requests"] == [
-        {
-            "url": "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-            "headers": {
-                "Accept-Encoding": "identity",
-                "Authorization": "Bearer provider-secret",
-                "Content-Type": "application/json",
-            },
-            "json": {
-                "model": "gemma-4-31b-it",
-                "messages": [{"role": "user", "content": "hi"}],
-                "extra_body": {"google": {"thinking_config": {"thinking_level": "minimal"}}},
-                "stream": True,
-                "stream_options": {"include_usage": True},
-                "temperature": 1.2,
-            },
-        }
-    ]
+    assert calls["requests"][0]["url"] == "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+    assert calls["requests"][0]["headers"] == {
+        "Accept-Encoding": "identity",
+        "Authorization": "Bearer provider-secret",
+        "Content-Type": "application/json",
+    }
+    assert calls["requests"][0]["json"] == {
+        "model": "gemma-4-31b-it",
+        "messages": [{"role": "user", "content": "hi"}],
+        "extra_body": {"google": {"thinking_config": {"thinking_level": "minimal"}}},
+        "stream": True,
+        "stream_options": {"include_usage": True},
+        "temperature": 1.2,
+    }
     assert response.sent_request_body == calls["requests"][0]["json"]
+    assert response.sent_request_body_raw == calls["requests"][0]["raw"]
     assert request_body["provider"]["order"] == ["ai-studio"]
     assert request_body["include"] == ["usage"]
     assert request_body["reasoning"] == {"effort": "none"}

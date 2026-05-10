@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import uuid
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, ClassVar
@@ -78,9 +79,9 @@ async def test_openai_compat_chat_completions_builds_headers(monkeypatch: pytest
         async def __aexit__(self, exc_type, exc, tb) -> None:
             return None
 
-        async def post(self, url: str, json: dict, headers: dict[str, str]) -> FakeResponse:
+        async def post(self, url: str, content: bytes, headers: dict[str, str]) -> FakeResponse:
             calls["url"] = url
-            calls["json"] = json
+            calls["json"] = json.loads(content.decode("utf-8"))
             calls["headers"] = headers
             return FakeResponse()
 
@@ -152,8 +153,9 @@ async def test_openai_compat_streaming_success(monkeypatch: pytest.MonkeyPatch) 
         def __init__(self, *, timeout: int) -> None:
             self.timeout = timeout
 
-        def stream(self, method: str, url: str, json: dict, headers: dict[str, str]) -> FakeStreamContext:
-            events.append(f"stream:{method}:{url}:{json['model']}")
+        def stream(self, method: str, url: str, content: bytes, headers: dict[str, str]) -> FakeStreamContext:
+            payload = json.loads(content.decode("utf-8"))
+            events.append(f"stream:{method}:{url}:{payload['model']}")
             return FakeStreamContext(FakeStreamResponse())
 
         async def aclose(self) -> None:
@@ -200,7 +202,7 @@ async def test_openai_compat_streaming_error(monkeypatch: pytest.MonkeyPatch) ->
         def __init__(self, *, timeout: int) -> None:
             self.timeout = timeout
 
-        def stream(self, method: str, url: str, json: dict, headers: dict[str, str]) -> FakeStreamContext:
+        def stream(self, method: str, url: str, content: bytes, headers: dict[str, str]) -> FakeStreamContext:
             return FakeStreamContext()
 
         async def aclose(self) -> None:
@@ -293,6 +295,7 @@ async def test_streaming_helpers_success_logging(monkeypatch: pytest.MonkeyPatch
         key_hash="hash",
         sent_request_headers=sent_headers,
         forward_body={"model": "provider-model"},
+        forward_body_raw='{"model":"provider-model"}',
         route=route,
         model_requested="gpt-4o-mini",
         start_time=0.0,
@@ -340,6 +343,7 @@ async def test_streaming_helpers_error_response(monkeypatch: pytest.MonkeyPatch)
         key_hash="hash",
         sent_request_headers={"Content-Type": "application/json"},
         forward_body={"model": "provider-model"},
+        forward_body_raw='{"model":"provider-model"}',
         route=route,
         model_requested="gpt-4o-mini",
         start_time=0.0,
@@ -381,6 +385,7 @@ async def test_streaming_helpers_normalize_string_error_response(monkeypatch: py
         key_hash="hash",
         sent_request_headers={"Content-Type": "application/json"},
         forward_body={"model": "provider-model"},
+        forward_body_raw='{"model":"provider-model"}',
         route=route,
         model_requested="gpt-4o-mini",
         start_time=0.0,

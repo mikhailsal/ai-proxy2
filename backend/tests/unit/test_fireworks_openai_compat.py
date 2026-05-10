@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import ClassVar
 
 import pytest
@@ -31,8 +32,8 @@ def _install_fake_async_client(monkeypatch: pytest.MonkeyPatch, calls: dict) -> 
         async def __aexit__(self, exc_type, exc, tb) -> None:
             return None
 
-        async def post(self, url: str, json: dict, headers: dict[str, str]) -> FakeResponse:
-            request = {"url": url, "json": json, "headers": headers}
+        async def post(self, url: str, content: bytes, headers: dict[str, str]) -> FakeResponse:
+            request = {"url": url, "json": json.loads(content), "raw": content.decode("utf-8"), "headers": headers}
             calls.setdefault("requests", []).append(request)
             return FakeResponse()
 
@@ -54,22 +55,19 @@ async def test_fireworks_strips_openrouter_only_fields(monkeypatch: pytest.Monke
 
     response = await _fireworks_adapter().chat_completions(request_body, {})
 
-    assert calls["requests"] == [
-        {
-            "url": "https://api.fireworks.ai/inference/v1/chat/completions",
-            "headers": {
-                "Accept-Encoding": "identity",
-                "Authorization": "Bearer fw_test_key",
-                "Content-Type": "application/json",
-            },
-            "json": {
-                "model": "accounts/fireworks/models/deepseek-v3p1",
-                "messages": [{"role": "user", "content": "hi"}],
-                "temperature": 0.7,
-            },
-        }
-    ]
+    assert calls["requests"][0]["url"] == "https://api.fireworks.ai/inference/v1/chat/completions"
+    assert calls["requests"][0]["headers"] == {
+        "Accept-Encoding": "identity",
+        "Authorization": "Bearer fw_test_key",
+        "Content-Type": "application/json",
+    }
+    assert calls["requests"][0]["json"] == {
+        "model": "accounts/fireworks/models/deepseek-v3p1",
+        "messages": [{"role": "user", "content": "hi"}],
+        "temperature": 0.7,
+    }
     assert response.sent_request_body == calls["requests"][0]["json"]
+    assert response.sent_request_body_raw == calls["requests"][0]["raw"]
     assert request_body["provider"]["order"] == ["fireworks"]
     assert request_body["include"] == ["usage"]
 

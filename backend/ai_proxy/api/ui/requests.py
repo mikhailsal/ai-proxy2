@@ -11,8 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ai_proxy.api.deps import get_session, require_ui_auth
 from ai_proxy.api.proxy import response_utils
+from ai_proxy.core.json_ordering import parse_json_text
 from ai_proxy.db.models import ProxyRequest
 from ai_proxy.db.repositories import requests as req_repo
+from ai_proxy.logging.masking import mask_sensitive_fields
 
 router = APIRouter(dependencies=[Depends(require_ui_auth)])
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
@@ -189,8 +191,10 @@ def _serialize_request_full(req: ProxyRequest) -> dict[str, Any]:
         {
             "request_headers": req.request_headers,
             "client_request_headers": req.client_request_headers,
-            "request_body": req.request_body,
-            "client_request_body": req.client_request_body,
+            "request_body": _ordered_request_body(getattr(req, "request_body_raw", None), req.request_body),
+            "client_request_body": _ordered_request_body(
+                getattr(req, "client_request_body_raw", None), req.client_request_body
+            ),
             "response_headers": req.response_headers,
             "client_response_headers": req.client_response_headers,
             "response_body": req.response_body,
@@ -201,6 +205,18 @@ def _serialize_request_full(req: ProxyRequest) -> dict[str, Any]:
         }
     )
     return data
+
+
+def _ordered_request_body(raw_text: str | None, fallback: Any) -> Any:
+    if not raw_text:
+        return fallback
+
+    try:
+        parsed = parse_json_text(raw_text)
+    except (json.JSONDecodeError, ValueError):
+        return fallback
+
+    return mask_sensitive_fields(parsed)
 
 
 @router.get("/ui/v1/requests")
