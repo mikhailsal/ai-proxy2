@@ -68,9 +68,16 @@ class TestExtractBodyProviderSlugs:
     def test_single_provider(self):
         assert extract_body_provider_slugs({"provider": {"order": ["DeepInfra"]}}) == ["DeepInfra"]
 
+    def test_single_provider_only(self):
+        assert extract_body_provider_slugs({"provider": {"only": ["ai-studio"]}}) == ["ai-studio"]
+
     def test_multiple_providers(self):
         result = extract_body_provider_slugs({"provider": {"order": ["bedrock", "deepinfra"]}})
         assert result == ["bedrock", "deepinfra"]
+
+    def test_only_takes_priority_over_order(self):
+        result = extract_body_provider_slugs({"provider": {"only": ["google-ai-studio"], "order": ["deepinfra"]}})
+        assert result == ["google-ai-studio"]
 
     def test_non_string_entries_filtered(self):
         assert extract_body_provider_slugs({"provider": {"order": [123, "deepinfra", None]}}) == ["deepinfra"]

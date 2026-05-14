@@ -70,19 +70,19 @@ def _apply_provider_pinning(body: JsonObject, route: RouteResult) -> None:
 
     provider_aware = getattr(route, "provider_aware_match", False)
     existing = body.get("provider")
-
-    if provider_aware:
-        if isinstance(existing, dict):
-            existing["order"] = route.pinned_providers
-            existing.setdefault("allow_fallbacks", False)
-        else:
-            body["provider"] = {"order": route.pinned_providers, "allow_fallbacks": False}
-    elif isinstance(existing, dict):
-        if "order" not in existing:
-            existing["order"] = route.pinned_providers
-            existing.setdefault("allow_fallbacks", False)
-    else:
+    if provider_aware and isinstance(existing, dict):
+        only_filter = isinstance(existing.get("only"), list) and existing["only"]
+        existing["only" if only_filter else "order"] = route.pinned_providers
+        if only_filter:
+            existing.pop("order", None)
+        existing.setdefault("allow_fallbacks", False)
+        return
+    if provider_aware or not isinstance(existing, dict):
         body["provider"] = {"order": route.pinned_providers, "allow_fallbacks": False}
+        return
+    if "order" not in existing:
+        existing["order"] = route.pinned_providers
+        existing.setdefault("allow_fallbacks", False)
 
 
 def _prepare_forward_request(

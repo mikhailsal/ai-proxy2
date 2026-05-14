@@ -61,18 +61,25 @@ def format_route_label(provider_name: str, mapped_model: str, pinned: list[str] 
 
 
 def extract_body_provider_slugs(body: dict[str, Any]) -> list[str] | None:
-    """Extract provider slugs from the OpenRouter-style ``provider.order`` body field.
+    """Extract provider slugs from the OpenRouter-style provider body fields.
 
+    Supports both ``provider.only`` and ``provider.order``. If both are
+    present, ``only`` takes priority because it is the stricter filter.
     Returns the list of provider slugs if present, otherwise ``None``.
     """
     provider_field = body.get("provider")
     if not isinstance(provider_field, dict):
         return None
-    order = provider_field.get("order")
-    if not isinstance(order, list) or not order:
-        return None
-    slugs = [slug for slug in order if isinstance(slug, str) and slug]
-    return slugs or None
+
+    for field_name in ("only", "order"):
+        values = provider_field.get(field_name)
+        if not isinstance(values, list) or not values:
+            continue
+        slugs = [slug for slug in values if isinstance(slug, str) and slug]
+        if slugs:
+            return slugs
+
+    return None
 
 
 def build_provider_qualified_key(model: str, provider_slug: str) -> str:

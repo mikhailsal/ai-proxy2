@@ -100,11 +100,11 @@ model_mappings:
 Clients can request a sub-provider in two ways — the proxy handles both transparently:
 
 1. **`+suffix` on the model name**: `"model": "openai/gpt-oss-120b+deepinfra"`
-2. **OpenRouter-style `provider.order`** in the request body:
+2. **OpenRouter-style `provider.only` or `provider.order`** in the request body:
    ```json
    {
      "model": "openai/gpt-oss-120b",
-     "provider": { "order": ["deepinfra"] }
+     "provider": { "only": ["deepinfra"] }
    }
    ```
 
@@ -122,7 +122,7 @@ For Google's OpenAI-compatible endpoint, the proxy also normalizes a few request
 | Priority | Source | Description |
 |---|---|---|
 | 1 | `+suffix` on model name | Highest — always checked first |
-| 2 | `provider.order` in body | Checked when no `+suffix` is present |
+| 2 | `provider.only` / `provider.order` in body | Checked when no `+suffix` is present |
 | 3 | Base model mapping | Fallback when no provider-qualified entry matches |
 
 **Edge cases:**

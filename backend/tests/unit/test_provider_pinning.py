@@ -81,6 +81,11 @@ class TestApplyProviderPinning:
         adapter = SimpleNamespace()
         return RouteResult("openrouter", "minimax/minimax-m2.7", adapter, pinned_providers=pinned)
 
+    def _make_provider_aware_route(self, pinned: list[str]) -> RouteResult:
+        route = self._make_route(pinned)
+        route.provider_aware_match = True
+        return route
+
     def test_no_pinning_when_none(self):
         body: dict[str, Any] = {"model": "minimax/minimax-m2.7", "messages": []}
         proxy_router._apply_provider_pinning(body, self._make_route(None))
@@ -132,6 +137,17 @@ class TestApplyProviderPinning:
         body: dict[str, Any] = {"model": "m", "messages": [], "provider": "invalid"}
         proxy_router._apply_provider_pinning(body, self._make_route(["minimax"]))
         assert body["provider"] == {"order": ["minimax"], "allow_fallbacks": False}
+
+    def test_provider_aware_match_normalizes_only_field(self):
+        body: dict[str, Any] = {
+            "model": "m",
+            "messages": [],
+            "provider": {"only": ["Google"]},
+        }
+        proxy_router._apply_provider_pinning(body, self._make_provider_aware_route(["google-ai-studio"]))
+        assert body["provider"]["only"] == ["google-ai-studio"]
+        assert "order" not in body["provider"]
+        assert body["provider"]["allow_fallbacks"] is False
 
 
 # ── Integration: full request flow ────────────────────────────────────
