@@ -290,17 +290,33 @@ def test_transport_and_cost_helpers() -> None:
     assert response_utils.extract_cost(None) is None
     assert response_utils.extract_cost({}) is None
     assert response_utils.extract_cost({"usage": {"cost": 0.0025}}) == 0.0025
-    assert response_utils.extract_cost({"usage": {"cost": 0.0025, "upstream_inference_cost": 0.01}}) == 0.0125
+    assert (
+        response_utils.extract_cost({"usage": {"cost": 0.0025, "is_byok": True, "upstream_inference_cost": 0.01}})
+        == 0.0125
+    )
     assert (
         response_utils.extract_cost(
             {
                 "usage": {
                     "cost": 0.000069125,
+                    "is_byok": True,
                     "cost_details": {"upstream_inference_cost": 0.0013825},
                 }
             }
         )
         == 0.001451625
+    )
+    assert (
+        response_utils.extract_cost(
+            {
+                "usage": {
+                    "cost": 0.0003039,
+                    "is_byok": False,
+                    "cost_details": {"upstream_inference_cost": 0.0003039},
+                }
+            }
+        )
+        == 0.0003039
     )
     assert response_utils.extract_cost({"cost": 0.01}) == 0.01
     assert response_utils.extract_cost({"market_cost": "0.25"}) == 0.25

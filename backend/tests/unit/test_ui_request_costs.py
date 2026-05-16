@@ -13,6 +13,7 @@ def test_serialize_request_uses_byok_inference_cost() -> None:
                 "completion_tokens": 5,
                 "total_tokens": 15,
                 "cost": "0.002",
+                "is_byok": True,
                 "upstream_inference_cost": 0.01,
             },
         },
@@ -30,6 +31,7 @@ def test_serialize_request_uses_nested_cost_details_and_market_cost() -> None:
                 "completion_tokens": 176,
                 "total_tokens": 1885,
                 "cost": 0.000069125,
+                "is_byok": True,
                 "cost_details": {"upstream_inference_cost": 0.0013825},
             },
         },
@@ -44,6 +46,21 @@ def test_serialize_request_uses_nested_cost_details_and_market_cost() -> None:
 
     assert requests._serialize_request(nested_cost_details)["cost"] == 0.001451625
     assert requests._serialize_request(market_cost)["cost"] == 0.125
+
+
+def test_serialize_request_does_not_double_count_non_byok_inference_cost() -> None:
+    record = make_request_record(
+        cost=0.0003039,
+        response_body={
+            "usage": {
+                "cost": 0.0003039,
+                "is_byok": False,
+                "cost_details": {"upstream_inference_cost": 0.0003039},
+            }
+        },
+    )
+
+    assert requests._serialize_request(record)["cost"] == 0.0003039
 
 
 def test_compute_tps_subtracts_ttft() -> None:

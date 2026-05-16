@@ -61,10 +61,17 @@ def extract_cost(response_body: Any) -> float | None:
         "inference_cost",
         "market_cost",
     )
+    is_byok = _first_boolean_value(containers, "is_byok")
 
     if base_cost is None and inference_cost is None:
         return None
-    return (base_cost or 0.0) + (inference_cost or 0.0)
+    if is_byok is True:
+        return (base_cost or 0.0) + (inference_cost or 0.0)
+    if base_cost not in (None, 0.0):
+        return base_cost
+    if inference_cost is not None:
+        return inference_cost
+    return base_cost
 
 
 def _first_numeric_value(containers: tuple[dict[str, Any] | None, ...], *keys: str) -> float | None:
@@ -73,6 +80,17 @@ def _first_numeric_value(containers: tuple[dict[str, Any] | None, ...], *keys: s
             continue
         for key in keys:
             parsed = _parse_cost_value(container.get(key))
+            if parsed is not None:
+                return parsed
+    return None
+
+
+def _first_boolean_value(containers: tuple[dict[str, Any] | None, ...], *keys: str) -> bool | None:
+    for container in containers:
+        if not isinstance(container, dict):
+            continue
+        for key in keys:
+            parsed = _parse_boolean_value(container.get(key))
             if parsed is not None:
                 return parsed
     return None
@@ -91,6 +109,18 @@ def _parse_cost_value(value: Any) -> float | None:
             return float(stripped)
         except ValueError:
             return None
+    return None
+
+
+def _parse_boolean_value(value: Any) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized == "true":
+            return True
+        if normalized == "false":
+            return False
     return None
 
 

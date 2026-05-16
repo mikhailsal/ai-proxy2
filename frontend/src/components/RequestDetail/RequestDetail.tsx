@@ -159,11 +159,18 @@ function resolveDisplayedCost(request: RequestSummary | RequestDetailType | null
   const containers = [body.usage, body.usageCostDetails, body.root, body.rootCostDetails];
   const baseCost = firstNumericValue(containers, ['cost', 'router_cost']);
   const inferenceCost = firstNumericValue(containers, ['upstream_inference_cost', 'inference_cost', 'market_cost']);
+  const isByok = firstBooleanValue(containers, ['is_byok']);
 
   if (baseCost === null && inferenceCost === null) {
     return request.cost;
   }
-  return (baseCost ?? 0) + (inferenceCost ?? 0);
+  if (isByok) {
+    return (baseCost ?? 0) + (inferenceCost ?? 0);
+  }
+  if (baseCost !== null && baseCost !== 0) {
+    return baseCost;
+  }
+  return inferenceCost ?? baseCost;
 }
 
 function readCostContainer(body: unknown): {
@@ -200,11 +207,35 @@ function firstNumericValue(
   return null;
 }
 
+function firstBooleanValue(
+  containers: Array<Record<string, unknown> | null>,
+  keys: string[],
+): boolean | null {
+  for (const container of containers) {
+    if (!container) continue;
+    for (const key of keys) {
+      const value = parseBooleanValue(container[key]);
+      if (value !== null) return value;
+    }
+  }
+  return null;
+}
+
 function parseNumericValue(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value === 'string') {
     const parsed = Number(value.trim());
     return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function parseBooleanValue(value: unknown): boolean | null {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true') return true;
+    if (normalized === 'false') return false;
   }
   return null;
 }
