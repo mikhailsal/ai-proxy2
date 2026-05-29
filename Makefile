@@ -1,4 +1,4 @@
-.PHONY: help lint format test-unit test-integration test-all coverage frontend-coverage quality-check install-hooks up down up-dev down-dev migrate migrate-create frontend-install frontend-lint frontend-test validate-config validate-config-dev reload-config
+.PHONY: help lint format test-unit test-integration test-all coverage frontend-coverage quality-check install-hooks up down up-dev down-dev migrate migrate-create frontend-install frontend-lint frontend-test validate-config validate-config-dev reload-config db-backup
 
 # ── Defaults ──────────────────────────────────────────────────────────
 SHELL := /bin/bash
@@ -7,6 +7,8 @@ FRONTEND_DIR := frontend
 COMPOSE := docker compose
 COMPOSE_DEV := docker compose -f docker-compose.yml -f docker-compose.dev.yml
 API_BASE_URL ?= http://localhost:8000
+BACKUP_DIR ?= backups
+POSTGRES_CONTAINER ?= ai-proxy2-db
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -62,6 +64,18 @@ frontend-build: ## Build frontend for production
 # ── Database ──────────────────────────────────────────────────────────
 migrate: ## Apply database migrations
 	docker compose run --rm backend python -m alembic upgrade head
+
+db-backup: ## Back up the full PostgreSQL database into backups/
+	@mkdir -p $(BACKUP_DIR)
+	@backup_file="$(BACKUP_DIR)/$${POSTGRES_DB:-ai_proxy}_$$(date +%Y%m%d_%H%M%S).sql.gz"; \
+	echo "Writing $$backup_file"; \
+	set -o pipefail; \
+	docker exec $(POSTGRES_CONTAINER) sh -lc 'export PGPASSWORD="$$POSTGRES_PASSWORD"; pg_dump -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" --clean --if-exists --no-owner --no-privileges' | gzip -9 > "$$backup_file"; \
+	if [[ ! -s "$$backup_file" ]]; then \
+		echo "Backup failed: $$backup_file is empty" >&2; \
+		rm -f "$$backup_file"; \
+		exit 1; \
+	fi
 
 migrate-rollback: ## Rollback last migration
 	docker compose run --rm backend python -m alembic downgrade -1

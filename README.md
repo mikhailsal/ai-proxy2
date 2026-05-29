@@ -189,6 +189,14 @@ cd frontend && npm install && npm run dev
 
 `make up` and `make up-dev` now run a config validation step in the backend container first and fail immediately if `config.yml` or `config.secrets.yml` is invalid.
 
+To capture a full database backup from the running PostgreSQL container, run:
+
+```bash
+make db-backup
+```
+
+This writes a timestamped compressed SQL dump into `backups/`.
+
 When the backend is already running, you can hot-reload `config.yml` and `config.secrets.yml` without restarting the stack:
 
 ```bash

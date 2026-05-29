@@ -28,3 +28,4 @@ certs/
 # Logs
 *.log
 .cursor/
+backups/
