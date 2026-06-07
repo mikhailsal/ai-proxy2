@@ -17,8 +17,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0005_add_first_assistant_response_column"
-down_revision: str = "0004_add_conversation_group_columns"
+revision: str = "0005_first_asst_resp"
+down_revision: str = "0004_conv_group_cols"
 branch_labels: Sequence[str] | None = None
 depends_on: Sequence[str] | None = None
 

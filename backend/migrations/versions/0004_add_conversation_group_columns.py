@@ -11,8 +11,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0004_add_conversation_group_columns"
-down_revision: str = "0003_add_client_request_response_headers"
+revision: str = "0004_conv_group_cols"
+down_revision: str = "0003_client_headers"
 branch_labels: Sequence[str] | None = None
 depends_on: Sequence[str] | None = None
 

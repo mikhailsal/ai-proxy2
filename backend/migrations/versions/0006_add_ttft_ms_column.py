@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "0006_add_ttft_ms_column"
-down_revision: str = "0005_add_first_assistant_response_column"
+down_revision: str = "0005_first_asst_resp"
 branch_labels: Sequence[str] | None = None
 depends_on: Sequence[str] | None = None
 

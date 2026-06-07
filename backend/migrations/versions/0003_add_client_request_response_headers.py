@@ -6,8 +6,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "0003_add_client_request_response_headers"
-down_revision: str = "0002_add_client_request_response_body"
+revision: str = "0003_client_headers"
+down_revision: str = "0002_client_body"
 branch_labels: Sequence[str] | None = None
 depends_on: Sequence[str] | None = None
 

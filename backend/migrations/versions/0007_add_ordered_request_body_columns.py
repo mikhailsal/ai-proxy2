@@ -9,7 +9,7 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0007_add_ordered_request_body_columns"
+revision: str = "0007_ordered_req_body"
 down_revision: str = "0006_add_ttft_ms_column"
 branch_labels: Sequence[str] | None = None
 depends_on: Sequence[str] | None = None

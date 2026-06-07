@@ -1,4 +1,4 @@
-import { Tiktoken } from 'js-tiktoken/lite';
+import { Tiktoken, type TiktokenBPE } from 'js-tiktoken/lite';
 import cl100k_base from 'js-tiktoken/ranks/cl100k_base';
 import o200k_base from 'js-tiktoken/ranks/o200k_base';
 
@@ -28,7 +28,7 @@ type EncodingName = 'o200k_base' | 'cl100k_base' | 'charBased';
 const DRIFT_TOLERANCE_EXACT = 0.15;
 const DRIFT_TOLERANCE_APPROX = 0.50;
 
-const ENCODING_RANKS: Record<string, Record<string, string | string[]>> = {
+const ENCODING_RANKS: Record<string, TiktokenBPE> = {
   o200k_base,
   cl100k_base,
 };
