@@ -54,8 +54,10 @@ model_mappings:
   "anthropic/claude-opus-4.5": "kilocode:anthropic/claude-opus-4.5"
   "anthropic/claude-opus-4.6": "kilocode:anthropic/claude-opus-4.6"
   "anthropic/claude-opus-4.7": "kilocode:anthropic/claude-opus-4.7"
+  "anthropic/claude-opus-4.8": "kilocode:anthropic/claude-opus-4.8"
   "anthropic/claude-haiku-4.5": "kilocode:anthropic/claude-haiku-4.5"
   # Google
+
   # Direct Google AI Studio aliases keep the default routes unchanged.
   "google/gemini-2.5-flash-lite+google-direct": "google:gemini-2.5-flash-lite"
   "google/gemini-2.5-flash+google-direct": "google:gemini-2.5-flash"
@@ -72,10 +74,14 @@ model_mappings:
   "google/gemini-3-flash-preview": "kilocode:google/gemini-3-flash-preview"
   "google/gemini-3-pro-preview": "kilocode:google/gemini-3-pro-preview"
   "google/gemini-3.1-pro-preview": "openrouter:google/gemini-3.1-pro-preview"
-  "google/gemini-3.1-flash-lite-preview": "openrouter:google/gemini-3.1-flash-lite-preview"
+  "google/gemini-3.1-flash-lite-preview": "openrouter:google/gemini-3.1-flash-lite"
+  "google/gemini-3.1-flash-lite+ai-studio": "google:gemini-3.1-flash-lite"
+  "google/gemini-3.1-flash-lite+google-direct": "google:gemini-3.1-flash-lite"
+  "google/gemini-3.5-flash": "kilocode:google/gemini-3.5-flash"
 
   #gemma
   "google/gemma-3-27b-it": "kilocode:google/gemma-3-27b-it"
+  "google/gemma-3-31b-it": "kilocode:google/gemma-3-31b-it"
   "google/gemma-4-31b-it+nim": "nvidia:google/gemma-4-31b-it"
   "google/gemma-4-*": "openrouter:google/gemma-4-*"
   "google/gemma-4-31b-it:free": "openrouter:google/gemma-4-31b-it:free"
@@ -96,6 +102,7 @@ model_mappings:
   "qwen/qwen3.5-35b-a3b": "openrouter:qwen/qwen3.5-35b-a3b"
   "qwen/qwen3.6-35b-a3b": "openrouter:qwen/qwen3.6-35b-a3b"
   "qwen/qwen3.6-max-preview": "openrouter:qwen/qwen3.6-max-preview"
+  "qwen/qwen3.7-max": "kilocode:qwen/qwen3.7-max"
   # Mistral
   "mistralai/mistral-small-3.2-24b-instruct": "openrouter:mistralai/mistral-small-3.2-24b-instruct"
   "mistralai/mistral-small-2603": "openrouter:mistralai/mistral-small-2603"
@@ -121,13 +128,14 @@ model_mappings:
   "deepseek/deepseek-v3.2-exp": "kilocode:deepseek/deepseek-v3.2-exp"
 
   # X-AI
+  "x-ai/grok-build-0.1": "kilocode:x-ai/grok-build-0.1"
   "x-ai/grok-4.3": "kilocode:x-ai/grok-4.3"
-  "x-ai/grok-4.20": "openrouter:x-ai/grok-4.20"
-  "x-ai/grok-4.1-fast": "openrouter:x-ai/grok-4.1-fast"
+  "x-ai/grok-4.20": "kilocode:x-ai/grok-4.20"
+  "x-ai/grok-4.1-fast": "kilocode:x-ai/grok-4.1-fast"
   "x-ai/grok-3-mini": "openrouter:x-ai/grok-3-mini"
   # MiniMax
-  "minimax/minimax-m2.7": "openrouter:minimax/minimax-m2.7"
-  "minimax/minimax-m2.5": "openrouter:minimax/minimax-m2.5"
+  "minimax/minimax-m2.7": "kilocode:minimax/minimax-m2.7"
+  "minimax/minimax-m2.5": "kilocode:minimax/minimax-m2.5"
   "minimax/minimax-m2.7+openrouter-minimax": "openrouter:minimax/minimax-m2.7+minimax"
   "minimax/minimax-m2.5+openrouter-minimax": "openrouter:minimax/minimax-m2.5+minimax"
 
@@ -158,7 +166,7 @@ model_mappings:
   "openrouter/*": "openrouter:openrouter/*"
   # other
   "inclusionai/ling-2.6-flash:free": "kilocode:inclusionai/ling-2.6-flash:free"
-  "tencent/hy3-preview:free": "kilocode:tencent/hy3-preview:free"
+  "tencent/hy3-preview": "kilocode:tencent/hy3-preview"
   "poolside/laguna-m.1:free": "kilocode:poolside/laguna-m.1:free"
   "poolside/laguna-xs.2:free": "kilocode:poolside/laguna-xs.2:free"
 
