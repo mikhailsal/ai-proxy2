@@ -1,4 +1,4 @@
-.PHONY: help lint format test-unit test-integration test-all coverage frontend-coverage quality-check install-hooks up down up-dev down-dev migrate migrate-create frontend-install frontend-lint frontend-test validate-config validate-config-dev reload-config db-backup
+.PHONY: help lint format test-unit test-integration test-all coverage frontend-coverage quality-check install-hooks up down up-dev down-dev migrate migrate-create frontend-install frontend-lint frontend-test validate-config validate-config-dev reload-config db-backup deploy
 
 # ── Defaults ──────────────────────────────────────────────────────────
 SHELL := /bin/bash
@@ -93,6 +93,10 @@ validate-config-dev: ## Validate dev config files in the backend container befor
 
 reload-config: ## Reload config and secrets via the running backend API
 	curl --fail --silent --show-error -X POST $(API_BASE_URL)/admin/reload-config
+
+# ── Deployment ────────────────────────────────────────────────────────
+deploy: ## Deploy working tree to the remote server (configure deploy.env first)
+	./scripts/deploy.sh
 
 # ── Docker ────────────────────────────────────────────────────────────
 up: ## Start production stack

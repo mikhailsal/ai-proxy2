@@ -3,6 +3,9 @@
 config.secrets.yml
 tmp-credentials-for-testing.md
 
+# Deployment target config (public repo: no server names/addresses)
+deploy.env
+
 # Python
 __pycache__/
 *.py[cod]

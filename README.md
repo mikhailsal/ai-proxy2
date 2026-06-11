@@ -219,6 +219,25 @@ DOMAIN=your.domain.com ACME_EMAIL=you@example.com docker compose up -d
 - UI: `https://logs.your.domain.com`
 - Traefik dashboard: `http://127.0.0.1:18080` by default, or `TRAEFIK_DASHBOARD_PORT` if overridden
 
+## Deploying to a server
+
+The repo includes a one-command deploy for setups where the app runs in an
+LXD container (with nested Docker) on a remote host:
+
+```bash
+cp deploy.env.example deploy.env   # one-time: fill in your server details
+make deploy
+```
+
+`scripts/deploy.sh` rsyncs the working tree to a staging directory on the
+server, copies it into the container's app directory, then rebuilds and
+restarts the Compose stack and applies migrations. Secrets and server-only
+files (`.env`, `config.secrets.yml`, local compose overrides) are never
+shipped and never deleted on the server.
+
+`deploy.env` is gitignored on purpose — this repository is public, so server
+names, addresses, and credentials must never be committed.
+
 ## Connecting clients
 
 The proxy exposes an OpenAI-compatible API. Point any OpenAI client at it:
