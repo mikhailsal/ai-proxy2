@@ -1,63 +1,200 @@
 # AI Proxy v2
 
-An OpenAI-compatible API proxy with logging, model routing, and a web UI for reviewing request history.
+![Python](https://img.shields.io/badge/python-3.10%2B-blue) ![Coverage](https://img.shields.io/badge/coverage-95%25-brightgreen) ![Tests](https://img.shields.io/badge/tests-460-green) ![mypy](https://img.shields.io/badge/mypy-strict-blueviolet) ![pre--commit](https://img.shields.io/badge/pre--commit-enforced-orange) ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
-## Stack
+**An API gateway and diagnostic proxy for LLM providers.** Exposes an OpenAI-compatible interface to clients while normalizing requests across heterogeneous upstream providers (OpenRouter, Google AI Studio, NVIDIA NIM, Fireworks, and others). Captures full request/response payloads, streaming SSE chunks, token usage, latencies, and costs — surfaced in a React-based inspector UI.
 
-- **Backend**: Python 3.10 + FastAPI
-- **Database**: PostgreSQL 16
-- **Frontend**: React 18 + Vite + TypeScript
-- **Reverse proxy**: Traefik (production only)
+---
 
-## Quick start
+## 🌐 Debugging Dashboard
+
+The built-in React UI gives developers instant visibility into model behavior: latencies, token counts (input / output / cached / reasoning), cost, and the **exact raw payloads** — both what the client sent and what was forwarded upstream, with mutations highlighted.
+
+![Dashboard Screenshot](docs/images/dashboard.png)
+
+---
+
+## 🔍 Core Capabilities
+
+### Request Inspection
+- **Side-by-side payload diff** — client request vs. upstream-forwarded request, with every mutation the proxy applied visually distinguished
+- **SSE stream reconstruction** — assembles chunk-by-chunk streaming responses, preserving reasoning/thought blocks and tool call deltas
+- **Full-text search** over request contents and system prompts; filter by status code, model, or provider
+
+### Chat Trajectory Reconstruction
+Because the OpenAI API is stateless, individual requests carry no session context. The **Chat Workspace** groups them on the fly by system prompt / first user message to reconstruct multi-turn conversation threads — with one-click export to Markdown or JSON.
+
+![Chat Workspace Screenshot](docs/images/chat_mode.png)
+
+### Model Catalog
+Lists all registered model names, wildcard patterns, alias expansions, and resolved upstream endpoints with their active parameter overrides.
+
+---
+
+## ⚡ Routing Engine
+
+Resolves an incoming model name to an upstream provider through a **four-stage priority chain**:
+
+| Priority | Mechanism | Example |
+|---|---|---|
+| **1** | Model name suffix (`+provider`) | `gemini-2.5-flash+google-direct` |
+| **2** | Body parameters (`provider.order` / `provider.only`) | OpenRouter-style client hints |
+| **3** | Exact model mapping in `config.yml` | `"gpt-4o" → openrouter:openai/gpt-4o` |
+| **4** | Wildcard / glob fallback | `"claude-*"`, `"*"` catch-all |
+
+Patterns use `fnmatch` glob syntax; matching is **case-insensitive** for provider slugs. Glob-mapped upstream model names are **pass-through** (the original name is preserved), while literal targets replace it exactly.
+
+---
+
+## 🔄 Protocol Normalization
+
+A single `OpenAICompatAdapter` handles multiple providers, each with a different flavour of the OpenAI spec:
+
+- **Google AI Studio** — strips unsupported parameters (`frequency_penalty`, `seed`, `top_k`, …), maps `reasoning_effort` → `thinking_config.thinking_level`, auto-enables `stream_options.include_usage` on streaming requests, handles Gemma-4 thinking toggle separately from Gemini
+- **Fireworks** — rewrites model names to `accounts/fireworks/models/…` prefix, removes unsupported fields, normalises `reasoning.effort` → `reasoning_effort`
+- **Headers** — strips hop-by-hop and proxy headers before forwarding; injects `Accept-Encoding: identity` to prevent compressed responses
+
+---
+
+## 🛡️ Security
+
+- **In-memory SHA-256 hashing** — plaintext proxy keys are hashed immediately on load; **never stored** in the database, logs, or console output
+- **Per-tenant key isolation (BYOK)** — each proxy key maps to its own set of upstream provider keys in a gitignored `config.secrets.yml`
+- **Credential masking in logs** — all stored headers and request bodies are run through a regex masker that redacts any field whose name matches `key|token|secret|password|authorization`
+- **Client key bypass mode** — accepts client-supplied provider keys for direct routing without persisting them
+
+---
+
+## 📦 Async Logging Pipeline
+
+Request logging is **fully non-blocking** — it never adds latency to the proxied response:
+
+1. The proxy handler enqueues a `LogEntry` into a **bounded async queue** (cap: 10 000 entries); if full, the entry is dropped with a warning rather than blocking
+2. A background `asyncio.Task` drains the queue in **batches of 50** on a 5-second flush cycle
+3. On shutdown, a `CancelledError` handler **flushes remaining entries** before the task exits
+4. Provider IDs are resolved with a **batch-warm cache** — a single SQL query per flush batch covers all new provider names
+
+---
+
+## 🚦 Rate Limiter
+
+Configured RPM limits (per provider) use a **sliding-window algorithm**. Requests that would exceed the window are **queued and delayed** rather than rejected — clients experience slightly higher latency instead of receiving a 429 for a limit that is the proxy's, not theirs.
+
+---
+
+## 🏗️ Request Flow
+
+```mermaid
+flowchart TD
+    Client(["Client\n(OpenAI SDK / curl)"])
+
+    subgraph Proxy ["AI Proxy v2 (FastAPI)"]
+        Auth["Auth\nSHA-256 key validation"]
+        Router["Routing Engine\n+suffix → body params → exact → wildcard"]
+        RateLimit["Rate Limiter\nSliding-window queue"]
+        Modify["Request Modifier\nParam injection / header rules"]
+        Adapter["OpenAI Compat Adapter\nProtocol normalization per provider"]
+        Logger["Async Log Queue\nnon-blocking enqueue"]
+    end
+
+    subgraph Providers ["Upstream Providers"]
+        OR["OpenRouter"]
+        GG["Google AI Studio"]
+        NV["NVIDIA NIM"]
+        FW["Fireworks / others"]
+    end
+
+    DB[("PostgreSQL\nRequest logs")]
+    UI["React Inspector UI"]
+
+    Client -->|"POST /v1/chat/completions"| Auth
+    Auth -->|"key valid"| Router
+    Router --> RateLimit
+    RateLimit --> Modify
+    Modify --> Adapter
+    Adapter -->|"normalized request"| OR & GG & NV & FW
+    OR & GG & NV & FW -->|"response / SSE stream"| Adapter
+    Adapter --> Logger
+    Logger -.->|"batch write\nevery 5s"| DB
+    DB --> UI
+```
+
+---
+
+## 🛠️ Stack
+
+| Layer | Technology |
+|---|---|
+| Backend | Python 3.10+, FastAPI, Uvicorn |
+| HTTP client | httpx (async, streaming) |
+| Database | PostgreSQL 16, SQLAlchemy 2 (asyncio), asyncpg, Alembic |
+| Structured logging | structlog |
+| Frontend | React 18, TypeScript, Vite, Vitest |
+| Reverse proxy | Traefik + automatic Let's Encrypt TLS |
+| Deployment | Docker Compose, LXD container deploy script |
+
+---
+
+## 🧪 Code Quality
+
+The project enforces a **full quality gate on every commit** via pre-commit hooks:
+
+```
+pre-commit → ruff (13 rule sets incl. bandit/security, bugbear, datetimez)
+           → mypy --strict (warn_return_any, disallow_untyped_defs)
+           → ESLint (frontend)
+           → pytest --cov ≥ 95% (backend, 272 tests)
+           → vitest --coverage ≥ 95% (frontend, 188 tests)
+           → code size bounds check
+```
+
+Run the full gate locally:
+```bash
+make quality-check
+```
+
+Individual targets:
+```bash
+make test-all          # backend tests
+make coverage          # backend tests + coverage report
+make frontend-test     # frontend tests
+make frontend-coverage # frontend tests + coverage report
+make lint              # ruff + mypy
+```
+
+---
+
+## 🚀 Quick Start
 
 ### 1. Configure environment
-
 ```bash
 cp .env.example .env
 ```
-
-Edit `.env` with infrastructure secrets:
-
 ```env
 POSTGRES_PASSWORD=your-secure-password
-
-# Default provider API key (used when no key_mapping overrides it)
-OPENROUTER_API_KEY=sk-or-...
+OPENROUTER_API_KEY=sk-or-v1-...
 GEMINI_API_KEY=your-gemini-api-key
 ```
 
 ### 2. Configure secrets
-
 ```bash
 cp config.secrets.example.yml config.secrets.yml
 ```
-
-Edit `config.secrets.yml` with your application secrets:
-
 ```yaml
-# Proxy access keys — clients authenticate with these
 api_keys:
-  - "your-proxy-key-1"
-  - "your-proxy-key-2"
+  - "your-proxy-key"
 
-# Web UI dashboard key
 ui_api_key: "your-ui-key"
 
-# Per-client provider key routing (optional)
-# Client keys are stored in plaintext — auto-hashed at load time
 key_mappings:
-  "your-proxy-key-1":
+  "your-proxy-key":
     provider_keys:
       openrouter: "sk-or-v1-client-specific-key"
 ```
-
-This file is gitignored and must never be committed.
+*`config.secrets.yml` is gitignored.*
 
 ### 3. Configure routing
-
-Edit `config.yml` to set up providers and model mappings:
-
+Edit `config.yml` to map client-facing model names to upstream providers:
 ```yaml
 providers:
   openrouter:
@@ -69,178 +206,43 @@ providers:
     api_key_env: GEMINI_API_KEY
 
 model_mappings:
-  "gpt-4o": "openrouter:openai/gpt-4o"
-  "claude-*": "openrouter:anthropic/claude-3.5-sonnet"
-  "google/gemma-4-31b-it+google-direct": "google:gemma-4-31b-it"
-  "*": "openrouter:openai/gpt-4o-mini"  # fallback
+  "gpt-4o":                           "openrouter:openai/gpt-4o"
+  "claude-*":                         "openrouter:anthropic/claude-3.5-sonnet"
+  "gemini-2.5-flash+google-direct":   "google:gemini-2.5-flash"
+  "*":                                "openrouter:*"
 ```
 
-Model names support `fnmatch` glob patterns. The first matching rule wins.
+---
 
-### 3a. Provider-aware routing (optional)
-
-Provider-aware routing lets you send the same model to different gateways depending on which sub-provider the client requests. This is useful when a particular sub-provider is cheaper, faster, or only available on a specific gateway.
-
-Add provider-qualified entries to `model_mappings` using the `model+provider` format on the left side:
-
-```yaml
-model_mappings:
-  # Base route (no provider preference)
-  "openai/gpt-oss-120b": "kilocode:openai/gpt-oss-120b"
-  # Route to kilocode when the client requests bedrock
-  "openai/gpt-oss-120b+bedrock": "kilocode:openai/gpt-oss-120b+bedrock"
-  # Route to openrouter when the client requests deepinfra
-  "openai/gpt-oss-120b+deepinfra": "openrouter:openai/gpt-oss-120b+deepinfra"
-  # Rename provider slugs (Google -> google-ai-studio)
-  "google/gemma-4-26b-a4b-it+Google": "openrouter:google/gemma-4-26b-a4b-it+google-ai-studio"
-  # Route directly to Google AI Studio with an opt-in alias
-  "google/gemma-4-31b-it+google-direct": "google:gemma-4-31b-it"
-```
-
-Clients can request a sub-provider in two ways — the proxy handles both transparently:
-
-1. **`+suffix` on the model name**: `"model": "openai/gpt-oss-120b+deepinfra"`
-2. **OpenRouter-style `provider.only` or `provider.order`** in the request body:
-   ```json
-   {
-     "model": "openai/gpt-oss-120b",
-     "provider": { "only": ["deepinfra"] }
-   }
-   ```
-
-For direct gateway escapes such as Google AI Studio, prefer a dedicated opt-in model alias like `google/gemma-4-31b-it+google-direct`. That keeps your base model mapping unchanged and avoids forwarding OpenRouter-specific `provider.order` fields to non-OpenRouter upstreams.
-
-For Google's OpenAI-compatible endpoint, the proxy also normalizes a few request fields before forwarding them upstream:
-
-- OpenRouter-only fields such as `provider` are stripped.
-- For streaming requests, `stream_options.include_usage` is enabled by default so Google returns usage counters and the proxy can log input/output token totals.
-- For hosted `gemma-4-*` models, standard OpenRouter-style reasoning is translated to `extra_body.google.thinking_config.thinking_level` because Google's Gemma endpoint behaves like a binary toggle in practice: `reasoning.effort = none` maps to `thinking_level = minimal`, and any other non-empty effort maps to `thinking_level = high`.
-- Thought display remains separate from reasoning enablement. The proxy may request Google thought summaries with `include_thoughts`, but it never uses `include_thoughts = false` to disable Gemma reasoning.
-
-**Resolution order:**
-
-| Priority | Source | Description |
-|---|---|---|
-| 1 | `+suffix` on model name | Highest — always checked first |
-| 2 | `provider.only` / `provider.order` in body | Checked when no `+suffix` is present |
-| 3 | Base model mapping | Fallback when no provider-qualified entry matches |
-
-**Edge cases:**
-
-- When both `+suffix` and `provider.order` are present, `+suffix` wins.
-- Provider names are matched **case-insensitively** (e.g., `DeepInfra` matches `deepinfra`).
-- When a provider-qualified config entry renames the provider slug (e.g., `+Google` → `+google-ai-studio`), the renamed slug is forwarded upstream.
-- When no matching provider-qualified entry exists, the proxy falls back to the base model mapping and passes through the client's provider preference normally.
-- **Conflict detection**: at config load time, the proxy logs an error when ambiguous entries are detected (e.g., a base mapping pins to provider X via one gateway, but a qualified entry routes the same provider through a different gateway).
-
-### 4. Bypass mode (optional)
-
-When bypass is enabled in `config.yml`, clients who are **not** in the `api_keys` list can still use the proxy by sending their own provider API key directly:
-
-```yaml
-bypass:
-  enabled: true   # accept unknown keys and forward them to the provider
-  # enabled: false  # reject all unknown keys (only api_keys accepted)
-```
-
-**Key priority** (configured keys always win):
-
-| Client key | Bypass | Result |
-|---|---|---|
-| Known key + has key_mapping | any | Mapped provider key is used |
-| Known key, no mapping | any | Adapter default key (from env) |
-| Unknown key | enabled | Client's raw key forwarded to provider |
-| Unknown key | disabled | Request rejected (401) |
-
-### 5. Run migrations
-
-Compose now runs Alembic automatically before the backend starts. If you want to run it manually:
+## 💻 Running Locally
 
 ```bash
-make migrate
-```
+# Start backend + DB
+POSTGRES_PASSWORD=your-password docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
 
-Use `make migrate-rollback` to verify the last revision can be reversed locally.
-
-### 6. Install quality hooks
-
-Set the repository-local Git hooks path so commits run the tracked pre-commit checks:
-
-```bash
-make install-hooks
-```
-
-The pre-commit workflow enforces:
-
-- backend Ruff and mypy
-- frontend ESLint
-- repository code-size limits
-- backend coverage of at least 95%
-- frontend line and statement coverage of at least 95%
-
-### 7. Run
-
-**Development** (backend on :8000, Dockerized frontend on :3000, optional Vite frontend for local UI edits):
-
-```bash
-POSTGRES_PASSWORD=your-secure-password docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+# Start frontend dev server
 cd frontend && npm install && npm run dev
 ```
 
-`make up` and `make up-dev` now run a config validation step in the backend container first and fail immediately if `config.yml` or `config.secrets.yml` is invalid.
+| Endpoint | URL |
+|---|---|
+| API Gateway | `http://localhost:8000` |
+| Web UI (Docker) | `http://localhost:3000` |
+| Web UI (Vite dev) | `http://localhost:5173` |
 
-To capture a full database backup from the running PostgreSQL container, run:
-
-```bash
-make db-backup
-```
-
-This writes a timestamped compressed SQL dump into `backups/`.
-
-When the backend is already running, you can hot-reload `config.yml` and `config.secrets.yml` without restarting the stack:
-
+**Hot-reload config** (no container restart needed):
 ```bash
 make reload-config
 ```
 
-Override the backend URL when needed, for example `make reload-config API_BASE_URL=http://127.0.0.1:8001`.
-
-- API: http://localhost:8000
-- Docker UI: http://localhost:3000
-- Vite UI: http://localhost:5173
-
-**Production** (requires a domain with DNS pointed at the server):
-
+### Production
 ```bash
 DOMAIN=your.domain.com ACME_EMAIL=you@example.com docker compose up -d
 ```
 
-- API: `https://your.domain.com`
-- UI: `https://logs.your.domain.com`
-- Traefik dashboard: `http://127.0.0.1:18080` by default, or `TRAEFIK_DASHBOARD_PORT` if overridden
+---
 
-## Deploying to a server
-
-The repo includes a one-command deploy for setups where the app runs in an
-LXD container (with nested Docker) on a remote host:
-
-```bash
-cp deploy.env.example deploy.env   # one-time: fill in your server details
-make deploy
-```
-
-`scripts/deploy.sh` rsyncs the working tree to a staging directory on the
-server, copies it into the container's app directory, then rebuilds and
-restarts the Compose stack and applies migrations. Secrets and server-only
-files (`.env`, `config.secrets.yml`, local compose overrides) are never
-shipped and never deleted on the server.
-
-`deploy.env` is gitignored on purpose — this repository is public, so server
-names, addresses, and credentials must never be committed.
-
-## Connecting clients
-
-The proxy exposes an OpenAI-compatible API. Point any OpenAI client at it:
+## 📦 Connecting Clients
 
 ```python
 from openai import OpenAI
@@ -249,14 +251,11 @@ client = OpenAI(
     base_url="https://your.domain.com/v1",
     api_key="your-proxy-key",
 )
-
 response = client.chat.completions.create(
-    model="gpt-4o-mini",  # must match a key in model_mappings
+    model="gpt-4o-mini",
     messages=[{"role": "user", "content": "Hello"}],
 )
 ```
-
-Or with curl:
 
 ```bash
 curl https://your.domain.com/v1/chat/completions \
@@ -265,73 +264,42 @@ curl https://your.domain.com/v1/chat/completions \
   -d '{"model": "gpt-4o-mini", "messages": [{"role": "user", "content": "Hello"}]}'
 ```
 
-Streaming (`"stream": true`) is supported.
+---
 
-## API endpoints
+## 📁 Project Structure
 
-| Endpoint | Auth | Description |
-|---|---|---|
-| `POST /v1/chat/completions` | `api_keys` / bypass | Proxy chat completions |
-| `GET /v1/models` | `api_keys` / bypass | List current proxy models, including wildcard-expanded provider models |
-| `POST /admin/reload-config` | none | Hot-reload config and secrets |
-| `GET /ui/v1/health` | `ui_api_key` | Authenticated UI connectivity check |
-| `GET /ui/v1/requests` | `ui_api_key` | Request log browser |
-| `GET /ui/v1/requests/{request_id}` | `ui_api_key` | Request detail |
-| `GET /ui/v1/search` | `ui_api_key` | Full-text request search |
-| `GET /ui/v1/stats` | `ui_api_key` | UI summary metrics |
-| `GET /ui/v1/conversations` | `ui_api_key` | Grouped conversations |
-| `GET /ui/v1/conversations/{group_key}/messages` | `ui_api_key` | Conversation messages |
-| `GET /ui/v1/export/requests/{request_id}` | `ui_api_key` | Export a request as JSON or Markdown |
+```
+backend/ai_proxy/
+  adapters/    Upstream provider clients — OpenAI-compat adapter with per-provider normalization
+  api/proxy/   FastAPI router — auth, rate limiting, streaming, logging orchestration
+  api/ui/      UI backend — request/chat repositories, model catalog endpoints
+  core/        Routing engine, rate limiter, key resolution, request modification rules
+  config/      YAML loader, settings models, hot-reload watcher, startup validator
+  logging/     Async batch logger, credential masker, log entry models
+  db/          SQLAlchemy models, async engine, session factory
+  services/    Model catalog builder (live upstream + static config merge)
 
-## Configuration reference
+frontend/src/
+  app/         Workspace tabs: Requests, Chat, Models
+  components/  Dashboard widgets, JSON viewer, diff highlighter
+  api/         Typed API client layer
 
-Configuration is split into two files:
-
-- **`config.yml`** (committed) — public routing and behavior settings
-- **`config.secrets.yml`** (gitignored) — all API keys and secrets
-
-### `config.yml`
-
-| Field | Description |
-|---|---|
-| `providers` | Named provider definitions (type, endpoint, headers) |
-| `model_mappings` | `client-model: provider:real-model` mappings (glob patterns ok on both sides; upstream metadata is forwarded on `/v1/models` when available). Provider-qualified keys (`model+provider`) enable gateway selection based on sub-provider — see §3a |
-| `response.include_ai_proxy_route` | Add the resolved `provider:model` route to JSON client responses (default: true) |
-| `bypass.enabled` | Accept unknown keys and forward them to the provider (default: false) |
-| `access_rules` | Per-key model allow/deny lists (optional) |
-| `modification_rules` | Rewrite request fields before forwarding (optional) |
-| `logging.log_retention_days` | Auto-delete logs older than N days (default: 30) |
-| `grouping.default_field` | Field used for conversation grouping (default: `system_prompt_first_user_first_assistant`) |
-
-### `config.secrets.yml`
-
-| Field | Description |
-|---|---|
-| `api_keys` | List of proxy access keys that clients use to authenticate |
-| `ui_api_key` | Key required to access the web UI endpoints |
-| `key_mappings` | Per-client mapping of proxy key to upstream provider keys |
-
-Client keys in `key_mappings` are written in plaintext — the proxy hashes them automatically at load time (SHA-256). See `config.secrets.example.yml` for the full template.
-
-### Environment variables (`.env`)
-
-| Variable | Required | Description |
-|---|---|---|
-| `POSTGRES_PASSWORD` | Yes | Database password |
-| `OPENROUTER_API_KEY` | If using OpenRouter | Default provider API key |
-| `GEMINI_API_KEY` | If using direct Google AI Studio routes | Default Google AI Studio API key |
-| `DOMAIN` | Production | Your domain name |
-| `ACME_EMAIL` | Production | Email for Let's Encrypt |
-
-Legacy support: `API_KEYS` and `UI_API_KEY` env vars still work as fallback if `config.secrets.yml` is absent.
-
-## Quality checks
-
-Run the full local quality gate before opening a PR:
-
-```bash
-make quality-check
+scripts/       deploy.sh (LXD remote sync + migration), check_code_limits.py
 ```
 
-This runs the repository line-limit checker, backend lint/type checks,
-backend coverage, frontend lint, and frontend coverage.
+---
+
+## 🚢 Deployment
+
+```bash
+cp deploy.env.example deploy.env   # set target host + credentials
+make deploy
+```
+
+`scripts/deploy.sh` syncs the repository to a remote LXD container, provisions Docker if needed, applies Alembic migrations, and updates Traefik routes — **without leaking gitignored credentials** to the remote environment.
+
+---
+
+## 📄 License
+
+MIT — see [LICENSE](LICENSE).
