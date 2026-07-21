@@ -29,21 +29,24 @@ providers:
 # Model mappings: client-facing model name -> provider:actual_model
 # Explicit entries are visible in /v1/models. The "*" wildcard is a fallback.
 model_mappings:
+  "x-ai/grok-*": "kilocode:x-ai/grok-*"
+  "openai/*": "kilocode:openai/*"
+  "anthropic/*": "kilocode:anthropic/*"
   "*": "openrouter:*"
   # OpenAI
-  "openai/gpt-5-nano": "openrouter:openai/gpt-5-nano"
-  "openai/gpt-5.1-codex-mini": "openrouter:openai/gpt-5.1-codex-mini"
-  "openai/gpt-5.2": "openrouter:openai/gpt-5.2"
-  "openai/gpt-5.3-chat": "openrouter:openai/gpt-5.3-chat"
-  "openai/gpt-5.3-codex": "openrouter:openai/gpt-5.3-codex"
-  "openai/gpt-5.4": "openrouter:openai/gpt-5.4"
-  "openai/gpt-5.4-mini": "openrouter:openai/gpt-5.4-mini"
-  "openai/gpt-5.4-nano": "openrouter:openai/gpt-5.4-nano"
-  "openai/gpt-5.5": "openrouter:openai/gpt-5.5"
-  "openai/gpt-4o-mini": "openrouter:openai/gpt-4o-mini"
-  "openai/gpt-oss-120b": "openrouter:openai/gpt-oss-120b"
+  "openai/gpt-5-nano": "kilocode:openai/gpt-5-nano"
+  "openai/gpt-5.1-codex-mini": "kilocode:openai/gpt-5.1-codex-mini"
+  "openai/gpt-5.2": "kilocode:openai/gpt-5.2"
+  "openai/gpt-5.3-chat": "kilocode:openai/gpt-5.3-chat"
+  "openai/gpt-5.3-codex": "kilocode:openai/gpt-5.3-codex"
+  "openai/gpt-5.4": "kilocode:openai/gpt-5.4"
+  "openai/gpt-5.4-mini": "kilocode:openai/gpt-5.4-mini"
+  "openai/gpt-5.4-nano": "kilocode:openai/gpt-5.4-nano"
+  "openai/gpt-5.5": "kilocode:openai/gpt-5.5"
+  "openai/gpt-4o-mini": "kilocode:openai/gpt-4o-mini"
+  "openai/gpt-oss-120b": "kilocode:openai/gpt-oss-120b"
   "openai/gpt-oss-120b+bedrock": "kilocode:openai/gpt-oss-120b+bedrock"
-  "openai/gpt-oss-20b": "openrouter:openai/gpt-oss-20b"
+  "openai/gpt-oss-20b": "kilocode:openai/gpt-oss-20b"
   "openai/gpt-oss-20b+bedrock": "kilocode:openai/gpt-oss-20b+bedrock"
   # Anthropic
   "anthropic/claude-3.5-haiku": "kilocode:anthropic/claude-3.5-haiku"
@@ -56,6 +59,7 @@ model_mappings:
   "anthropic/claude-opus-4.7": "kilocode:anthropic/claude-opus-4.7"
   "anthropic/claude-opus-4.8": "kilocode:anthropic/claude-opus-4.8"
   "anthropic/claude-haiku-4.5": "kilocode:anthropic/claude-haiku-4.5"
+  "anthropic/claude-fable-5": "kilocode:anthropic/claude-fable-5"
   # Google
 
   # Direct Google AI Studio aliases keep the default routes unchanged.
@@ -118,10 +122,11 @@ model_mappings:
   # Moonshot
   "moonshotai/kimi-k2.5": "openrouter:moonshotai/kimi-k2.5"
   "moonshotai/kimi-k2.6": "openrouter:moonshotai/kimi-k2.6"
-  "moonshotai/kimi-k2.5+moonshotai": "kilocode:moonshotai/kimi-k2.5+moonshot/int"
-  "moonshotai/kimi-k2.6+moonshotai": "kilocode:moonshotai/kimi-k2.6+moonshot/int"
+  "moonshotai/kimi-k2.5+moonshotai": "kilocode:moonshotai/kimi-k2.5+moonshotai/int4"
+  "moonshotai/kimi-k2.6+moonshotai": "kilocode:moonshotai/kimi-k2.6+moonshotai/int4"
   "moonshotai/kimi-k2.5+bedrock": "kilocode:moonshotai/kimi-k2.5+bedrock"
   "moonshotai/kimi-k2.6+bedrock": "kilocode:moonshotai/kimi-k2.6+bedrock"
+  "moonshotai/kimi-k2.7-code": "openrouter:moonshotai/kimi-k2.7-code"
 
   # DeepSeek
   "deepseek/deepseek-v3.2": "openrouter:deepseek/deepseek-v3.2"
@@ -132,10 +137,11 @@ model_mappings:
   "x-ai/grok-4.3": "kilocode:x-ai/grok-4.3"
   "x-ai/grok-4.20": "kilocode:x-ai/grok-4.20"
   "x-ai/grok-4.1-fast": "kilocode:x-ai/grok-4.1-fast"
-  "x-ai/grok-3-mini": "openrouter:x-ai/grok-3-mini"
+  "x-ai/grok-3-mini": "kilocode:x-ai/grok-3-mini"
   # MiniMax
   "minimax/minimax-m2.7": "kilocode:minimax/minimax-m2.7"
   "minimax/minimax-m2.5": "kilocode:minimax/minimax-m2.5"
+  "minimax/minimax-m3": "kilocode:minimax/minimax-m3"
   "minimax/minimax-m2.7+openrouter-minimax": "openrouter:minimax/minimax-m2.7+minimax"
   "minimax/minimax-m2.5+openrouter-minimax": "openrouter:minimax/minimax-m2.5+minimax"
 
