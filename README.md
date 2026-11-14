@@ -230,10 +230,18 @@ cd frontend && npm install && npm run dev
 | Web UI (Docker) | `http://localhost:3000` |
 | Web UI (Vite dev) | `http://localhost:5173` |
 
-**Hot-reload config** (no container restart needed):
+**Hot-reload config** (after an in-place file update):
 ```bash
 make reload-config
 ```
+
+The Compose files bind-mount `config.yml` and `config.secrets.yml` individually.
+Keep the existing file inode when updating them. Replacing a file atomically
+(for example, an editor's save-by-rename or `mv`) leaves a running container
+reading the old file; filesystem polling cannot repair that mount. After such
+an update, recreate the backend container with the same Compose files you used
+to start it, for example `docker compose up -d --force-recreate backend` in
+production. A plain reload is insufficient.
 
 ### Production
 ```bash
@@ -297,6 +305,25 @@ make deploy
 ```
 
 `scripts/deploy.sh` syncs the repository to a remote LXD container, provisions Docker if needed, applies Alembic migrations, and updates Traefik routes — **without leaking gitignored credentials** to the remote environment.
+
+Deployment uses GNU tar's `--overwrite` to update existing files in place, so
+`config.yml` remains visible through the running backend's file bind mount.
+If a previous deployment has already left a stale mount, recreate the backend
+once as described above. This fix does not add a config-only deployment target;
+`make deploy` still runs the normal build and validation steps. In-place updates
+are non-atomic: a concurrent reload or watcher may briefly read incomplete
+content during transfer. Avoid manual reload while a transfer is in progress;
+if a transfer fails, complete it before reloading. Deploy into regular files:
+GNU tar's `--overwrite` can follow existing destination symlinks.
+
+The deployment regression tests use local SSH/LXD stubs and exercise the real
+tar pipeline followed by the reload API. An additional Linux Docker smoke test
+checks visibility through a running container's actual file bind mount (it may
+pull `alpine:3.21`):
+```bash
+cd backend
+RUN_DOCKER_TESTS=1 python -m pytest tests/unit/test_deploy_config_reload.py -v
+```
 
 ---
 

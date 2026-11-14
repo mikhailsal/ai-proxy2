@@ -71,9 +71,11 @@ log "Syncing working tree to $DEPLOY_SSH_HOST:$DEPLOY_STAGING_DIR ..."
 ssh "$DEPLOY_SSH_HOST" "mkdir -p '$DEPLOY_STAGING_DIR'"
 rsync -az --delete "${RSYNC_EXCLUDES[@]}" "$REPO_ROOT/" "$DEPLOY_SSH_HOST:$DEPLOY_STAGING_DIR/"
 
+# Preserve existing file inodes: config.yml is bind-mounted as a single file.
+# Default tar extraction unlinks it, leaving a running backend on stale content.
 log "Copying code into container '$DEPLOY_LXD_CONTAINER' at $DEPLOY_APP_DIR ..."
 ssh "$DEPLOY_SSH_HOST" \
-    "tar -C '$DEPLOY_STAGING_DIR' -cf - . | sudo lxc exec '$DEPLOY_LXD_CONTAINER' -- tar -C '$DEPLOY_APP_DIR' -xof -"
+    "tar -C '$DEPLOY_STAGING_DIR' -cf - . | sudo lxc exec '$DEPLOY_LXD_CONTAINER' -- tar -C '$DEPLOY_APP_DIR' --overwrite -xof -"
 
 run_in_app() {
     ssh "$DEPLOY_SSH_HOST" \

@@ -5,12 +5,11 @@ application configuration + adapter registry automatically.  Uses
 ``watchfiles`` (bundled with uvicorn[standard]) for efficient, OS-level
 file-change notifications.
 
-Inside Docker containers, inotify events from bind-mounted host files
-are unreliable (editors perform atomic writes that change the file's
-inode, but the mount tracks the original inode).  The watcher therefore
-watches the **parent directories** of each config file and enables
-**polling mode** when it detects a containerised environment, ensuring
-changes are always picked up.
+Inside Docker containers, inotify events from host files can be unreliable.
+The watcher watches parent directories and enables polling in containers.
+Polling cannot repair a single-file bind mount whose host file was replaced
+with a new inode; that requires recreating the container or preserving the
+original inode when updating the host file.
 """
 
 from __future__ import annotations
