@@ -230,10 +230,13 @@ cd frontend && npm install && npm run dev
 | Web UI (Docker) | `http://localhost:3000` |
 | Web UI (Vite dev) | `http://localhost:5173` |
 
-**Hot-reload config** (after an in-place file update):
+**Hot-reload config** (after an in-place file update; restart `backend` if changes are not picked up):
 ```bash
 make reload-config
+# If changes are not picked up (known issue with bind-mounted config):
+docker compose restart backend
 ```
+> When updating only `config.yml` on a remote server, copy `config.yml` into `$DEPLOY_APP_DIR` and restart `backend` instead of running `scripts/deploy.sh` (which rebuilds images).
 
 The Compose files bind-mount `config.yml` and `config.secrets.yml` individually.
 Keep the existing file inode when updating them. Replacing a file atomically
