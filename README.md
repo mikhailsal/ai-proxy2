@@ -230,10 +230,13 @@ cd frontend && npm install && npm run dev
 | Web UI (Docker) | `http://localhost:3000` |
 | Web UI (Vite dev) | `http://localhost:5173` |
 
-**Hot-reload config** (no container restart needed):
+**Hot-reload config** (or restart `backend` if hot-reload does not pick up changes):
 ```bash
 make reload-config
+# If changes are not picked up (known issue with bind-mounted config):
+docker compose restart backend
 ```
+> When updating only `config.yml` on a remote server, copy `config.yml` into `$DEPLOY_APP_DIR` and restart `backend` instead of running `scripts/deploy.sh` (which rebuilds images).
 
 ### Production
 ```bash
