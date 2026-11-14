@@ -1,4 +1,5 @@
 import pytest
+from httpx import ASGITransport, AsyncClient
 
 from ai_proxy.app import create_app, lifespan
 
@@ -9,11 +10,18 @@ def test_create_app_returns_fastapi_instance() -> None:
     assert app.version == "2.0.0"
 
 
-def test_create_app_has_health_route() -> None:
-    app = create_app()
-    route_paths = [route.path for route in app.routes]
-    assert "/health" in route_paths
-    assert "/ui/v1/health" in route_paths
+@pytest.mark.asyncio
+async def test_create_app_has_health_route(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("UI_API_KEY", "test-ui-key")
+    transport = ASGITransport(app=create_app())
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/health")
+        assert response.status_code == 200
+        assert response.json() == {"status": "ok"}
+
+        response = await client.get("/ui/v1/health", headers={"Authorization": "Bearer test-ui-key"})
+        assert response.status_code == 200
+        assert response.json() == {"status": "ok"}
 
 
 @pytest.mark.asyncio

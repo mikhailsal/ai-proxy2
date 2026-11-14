@@ -2,13 +2,16 @@
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
+from sqlalchemy import ColumnElement, desc, func, or_, select
 from sqlalchemy import delete as sql_delete
-from sqlalchemy import desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ai_proxy.db.models import Provider, ProxyRequest
+
+if TYPE_CHECKING:
+    from sqlalchemy.engine import CursorResult
 
 
 async def create_request(session: AsyncSession, **kwargs: Any) -> ProxyRequest:
@@ -86,7 +89,7 @@ async def search_requests(
     return list(result.scalars().all())
 
 
-def _model_match_clause(query_text: str):
+def _model_match_clause(query_text: str) -> ColumnElement[bool]:
     pattern = f"%{query_text}%"
     return or_(
         ProxyRequest.model_requested.ilike(pattern),
@@ -120,4 +123,4 @@ async def get_stats(session: AsyncSession) -> dict[str, float | int]:
 async def delete_old_requests(session: AsyncSession, before: datetime) -> int:
     result = await session.execute(sql_delete(ProxyRequest).where(ProxyRequest.timestamp < before))
     await session.commit()
-    return result.rowcount  # type: ignore[attr-defined]
+    return cast("CursorResult[Any]", result).rowcount

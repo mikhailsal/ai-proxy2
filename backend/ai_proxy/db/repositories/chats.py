@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from sqlalchemy import case, desc, func, literal, select
 from sqlalchemy.orm import load_only
@@ -11,6 +11,7 @@ from sqlalchemy.orm import load_only
 from ai_proxy.db.models import ProxyRequest
 
 if TYPE_CHECKING:
+    from sqlalchemy import ColumnElement
     from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -123,7 +124,7 @@ def _first_message_by_role(request_body: Any, role: str) -> dict[str, Any] | Non
 
 
 def _first_assistant_response_text(request: ProxyRequest) -> str:
-    cached = getattr(request, "first_assistant_response_text", None)
+    cached = cast("str | None", getattr(request, "first_assistant_response_text", None))
     if cached:
         return cached
     request_body = getattr(request, "request_body", None)
@@ -318,7 +319,7 @@ def build_conversation_messages(requests: list[ProxyRequest]) -> list[dict[str, 
     return tree.to_list()
 
 
-def _group_key_expression(group_by: str):
+def _group_key_expression(group_by: str) -> ColumnElement[str]:
     """Return a SQL expression for the conversation group key."""
     system = func.coalesce(ProxyRequest.system_prompt_text, literal(""))
     user = func.coalesce(ProxyRequest.first_user_message_text, literal(""))
@@ -344,7 +345,9 @@ def _group_key_expression(group_by: str):
     )
 
 
-def _triple_label_case(system, user, assistant):
+def _triple_label_case(
+    system: ColumnElement[str], user: ColumnElement[str], assistant: ColumnElement[str]
+) -> ColumnElement[str]:
     """Build a CASE expression for the triple (system+user+assistant) label."""
     has_s = ProxyRequest.system_prompt_text.isnot(None)
     has_u = ProxyRequest.first_user_message_text.isnot(None)
@@ -365,7 +368,7 @@ def _triple_label_case(system, user, assistant):
     )
 
 
-def _group_label_expression(group_by: str):
+def _group_label_expression(group_by: str) -> ColumnElement[str]:
     """Return a SQL expression for the conversation group display label."""
     system = func.coalesce(ProxyRequest.system_prompt_text, literal(""))
     user = func.coalesce(ProxyRequest.first_user_message_text, literal(""))

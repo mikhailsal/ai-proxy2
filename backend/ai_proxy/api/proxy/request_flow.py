@@ -2,6 +2,7 @@
 
 import inspect
 import sys
+from typing import TypeVar, cast
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
@@ -13,10 +14,12 @@ from ai_proxy.core.routing import RouteResult, resolve_model
 from ai_proxy.security.auth import validate_proxy_api_key
 from ai_proxy.types import JsonObject
 
+_T = TypeVar("_T")
 
-def _router_override(name: str, default):
+
+def _router_override(name: str, default: _T) -> _T:
     router = sys.modules.get("ai_proxy.api.proxy.router")
-    return getattr(router, name, default) if router is not None else default
+    return cast("_T", getattr(router, name, default)) if router is not None else default
 
 
 def extract_api_key(request: Request) -> str | None:

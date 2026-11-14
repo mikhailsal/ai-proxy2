@@ -247,7 +247,7 @@ def test_modification_skips_non_matching_provider(monkeypatch):
         ],
     )
     monkeypatch.setattr(modification, "get_app_config", lambda: config)
-    body, headers = modification.apply_modifications({}, {}, "primary", "gpt-4o")
+    _body, headers = modification.apply_modifications({}, {}, "primary", "gpt-4o")
     assert "X-Test" not in headers
 
 
@@ -258,7 +258,7 @@ def test_modification_skips_non_matching_model(monkeypatch):
         ],
     )
     monkeypatch.setattr(modification, "get_app_config", lambda: config)
-    body, headers = modification.apply_modifications({}, {}, "primary", "gpt-4o")
+    _body, headers = modification.apply_modifications({}, {}, "primary", "gpt-4o")
     assert "X-Test" not in headers
 
 
@@ -283,7 +283,7 @@ def test_validate_proxy_no_key_with_configured_keys(monkeypatch):
     settings = SimpleNamespace(get_api_keys=lambda: [], ui_api_key="")
     monkeypatch.setattr("ai_proxy.security.auth.get_settings", lambda: settings)
 
-    ok, key_hash, is_known = auth_mod.validate_proxy_api_key(None, bypass_enabled=False)
+    ok, _key_hash, _is_known = auth_mod.validate_proxy_api_key(None, bypass_enabled=False)
     assert ok is False
 
 
@@ -293,7 +293,7 @@ def test_validate_proxy_wrong_key_no_configured(monkeypatch):
     settings = SimpleNamespace(get_api_keys=lambda: [], ui_api_key="")
     monkeypatch.setattr("ai_proxy.security.auth.get_settings", lambda: settings)
 
-    ok, key_hash, is_known = auth_mod.validate_proxy_api_key("any-key")
+    ok, _key_hash, is_known = auth_mod.validate_proxy_api_key("any-key")
     assert ok is True
     assert is_known is False
 
