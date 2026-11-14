@@ -12,7 +12,7 @@ from collections import deque
 
 import structlog
 
-from ai_proxy.config.settings import RateLimitConfig
+from ai_proxy.config.settings import ProviderConfig, RateLimitConfig
 
 logger = structlog.get_logger()
 
@@ -82,7 +82,7 @@ def get_rate_limiter(provider_name: str) -> "ProviderRateLimiter | None":
     return _limiters.get(provider_name)
 
 
-def build_rate_limiters(providers: dict) -> None:
+def build_rate_limiters(providers: dict[str, ProviderConfig]) -> None:
     """Build rate limiter instances from provider configs.
 
     Called during startup and config hot-reload.

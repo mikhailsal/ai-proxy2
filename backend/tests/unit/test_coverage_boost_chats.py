@@ -91,7 +91,7 @@ def test_group_identity_system_prompt_first_user_with_system_only():
         request_body={"messages": [{"role": "system", "content": "be helpful"}]},
         system_prompt_text="be helpful",
     )
-    key, label = chat_repo._group_identity(record, "system_prompt_first_user")
+    _key, label = chat_repo._group_identity(record, "system_prompt_first_user")
     assert "System:" in label
     assert "User:" not in label
 
@@ -101,14 +101,14 @@ def test_group_identity_system_prompt_first_user_with_user_only():
         request_body={"messages": [{"role": "user", "content": "hello"}]},
         first_user_message_text="hello",
     )
-    key, label = chat_repo._group_identity(record, "system_prompt_first_user")
+    _key, label = chat_repo._group_identity(record, "system_prompt_first_user")
     assert "User:" in label
     assert "System:" not in label
 
 
 def test_group_identity_system_prompt_first_user_empty():
     record = _make_record(request_body={"messages": []})
-    key, label = chat_repo._group_identity(record, "system_prompt_first_user")
+    _key, label = chat_repo._group_identity(record, "system_prompt_first_user")
     assert label == "unknown"
 
 
@@ -125,7 +125,7 @@ def test_group_identity_triple_all_present():
         first_user_message_text="hello",
         first_assistant_response_text="hi there",
     )
-    key, label = chat_repo._group_identity(record, "system_prompt_first_user_first_assistant")
+    _key, label = chat_repo._group_identity(record, "system_prompt_first_user_first_assistant")
     assert "System: be helpful" in label
     assert "User: hello" in label
     assert "Assistant: hi there" in label
@@ -137,7 +137,7 @@ def test_group_identity_triple_system_and_user_only():
         system_prompt_text="sys",
         first_user_message_text="usr",
     )
-    key, label = chat_repo._group_identity(record, "system_prompt_first_user_first_assistant")
+    _key, label = chat_repo._group_identity(record, "system_prompt_first_user_first_assistant")
     assert "System: sys" in label
     assert "User: usr" in label
     assert "Assistant:" not in label
@@ -145,7 +145,7 @@ def test_group_identity_triple_system_and_user_only():
 
 def test_group_identity_triple_empty():
     record = _make_record(request_body={"messages": []})
-    key, label = chat_repo._group_identity(record, "system_prompt_first_user_first_assistant")
+    _key, label = chat_repo._group_identity(record, "system_prompt_first_user_first_assistant")
     assert label == "unknown"
 
 
