@@ -1,0 +1,48 @@
+# Isolated, disposable test stack. No production secrets, ports, or data volumes.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ai_proxy_ci
+      POSTGRES_USER: ai_proxy_ci
+      POSTGRES_PASSWORD: ci-only-password
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U ai_proxy_ci -d ai_proxy_ci"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  migrate:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql+asyncpg://ai_proxy_ci:ci-only-password@postgres:5432/ai_proxy_ci
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: [python, -m, alembic, upgrade, head]
+
+  backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql+asyncpg://ai_proxy_ci:ci-only-password@postgres:5432/ai_proxy_ci
+      CONFIG_PATH: /app/config.yml
+      SECRETS_PATH: /app/config.secrets.yml
+    volumes:
+      - ./tests/ci/config.yml:/app/config.yml:ro
+      - ./tests/ci/secrets.yml:/app/config.secrets.yml:ro
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: [CMD, curl, --fail, --silent, http://localhost:8000/health]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  frontend:
+    build: ./frontend
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1/health]
+      interval: 2s
+      timeout: 3s
+      retries: 30

@@ -306,3 +306,10 @@ make deploy
 ## 📄 License
 
 MIT — see [LICENSE](LICENSE).
+
+## Continuous integration
+
+Every pull request runs backend lint/type checks and tests with coverage, frontend
+lint/tests/build, and an isolated Docker integration stack. See [CI and merge
+protection](docs/ci.md) for the required `CI required` check, local commands, and the
+repository-owner setup that prevents merging failed or unchecked pull requests.
